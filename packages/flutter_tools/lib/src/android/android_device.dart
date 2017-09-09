@@ -35,6 +35,7 @@ const Map<String, _HardwareType> _knownHardware = const <String, _HardwareType>{
   'qcom': _HardwareType.physical,
   'ranchu': _HardwareType.emulator,
   'samsungexynos7420': _HardwareType.physical,
+  'samsungexynos8890': _HardwareType.physical,
   'samsungexynos8895': _HardwareType.physical,
 };
 
@@ -242,8 +243,13 @@ class AndroidDevice extends Device {
   @override
   Future<bool> isAppInstalled(ApplicationPackage app) async {
     // This call takes 400ms - 600ms.
-    final RunResult listOut = await runCheckedAsync(adbCommandForDevice(<String>['shell', 'pm', 'list', 'packages', app.id]));
-    return LineSplitter.split(listOut.stdout).contains("package:${app.id}");
+    try {
+      final RunResult listOut = await runCheckedAsync(adbCommandForDevice(<String>['shell', 'pm', 'list', 'packages', app.id]));
+      return LineSplitter.split(listOut.stdout).contains('package:${app.id}');
+    } catch (error) {
+      printTrace('$error');
+      return false;
+    }
   }
 
   @override
@@ -276,6 +282,7 @@ class AndroidDevice extends Device {
     }
     if (installResult.exitCode != 0) {
       printError('Error: ADB exited with exit code ${installResult.exitCode}');
+      printError('$installResult');
       return false;
     }
 
@@ -331,20 +338,19 @@ class AndroidDevice extends Device {
 
   @override
   Future<LaunchResult> startApp(
-    ApplicationPackage package,
-    BuildMode mode, {
+    ApplicationPackage package, {
     String mainPath,
     String route,
     DebuggingOptions debuggingOptions,
     Map<String, dynamic> platformArgs,
-    String kernelPath,
     bool prebuiltApplication: false,
     bool applicationNeedsRebuild: false,
+    bool usesTerminalUi: true,
   }) async {
     if (!await _checkForSupportedAdbVersion() || !await _checkForSupportedAndroidVersion())
       return new LaunchResult.failed();
 
-    if (await targetPlatform != TargetPlatform.android_arm && mode != BuildMode.debug) {
+    if (await targetPlatform != TargetPlatform.android_arm && !debuggingOptions.buildInfo.isDebug) {
       printError('Profile and release builds are only supported on ARM targets.');
       return new LaunchResult.failed();
     }
@@ -353,12 +359,11 @@ class AndroidDevice extends Device {
       printTrace('Building APK');
       await buildApk(
           target: mainPath,
-          buildMode: debuggingOptions.buildMode,
-          kernelPath: kernelPath,
+          buildInfo: debuggingOptions.buildInfo,
       );
       // Package has been built, so we can get the updated application ID and
       // activity name from the .apk.
-      package = new AndroidApk.fromCurrentDirectory();
+      package = await AndroidApk.fromCurrentDirectory();
     }
 
     printTrace("Stopping app '${package.name}' on $name.");
@@ -400,7 +405,7 @@ class AndroidDevice extends Device {
     if (debuggingOptions.enableSoftwareRendering)
       cmd.addAll(<String>['--ez', 'enable-software-rendering', 'true']);
     if (debuggingOptions.debuggingEnabled) {
-      if (debuggingOptions.buildMode == BuildMode.debug)
+      if (debuggingOptions.buildInfo.isDebug)
         cmd.addAll(<String>['--ez', 'enable-checked-mode', 'true']);
       if (debuggingOptions.startPaused)
         cmd.addAll(<String>['--ez', 'start-paused', 'true']);
@@ -427,13 +432,13 @@ class AndroidDevice extends Device {
     try {
       Uri observatoryUri, diagnosticUri;
 
-      if (debuggingOptions.buildMode == BuildMode.debug) {
+      if (debuggingOptions.buildInfo.isDebug) {
         final List<Uri> deviceUris = await Future.wait(
             <Future<Uri>>[observatoryDiscovery.uri, diagnosticDiscovery.uri]
         );
         observatoryUri = deviceUris[0];
         diagnosticUri = deviceUris[1];
-      } else if (debuggingOptions.buildMode == BuildMode.profile) {
+      } else if (debuggingOptions.buildInfo.isProfile) {
         observatoryUri = await observatoryDiscovery.uri;
       }
 

@@ -306,21 +306,21 @@ class IOSSimulator extends Device {
 
   @override
   Future<LaunchResult> startApp(
-    ApplicationPackage app,
-    BuildMode mode, {
+    ApplicationPackage app, {
     String mainPath,
     String route,
     DebuggingOptions debuggingOptions,
     Map<String, dynamic> platformArgs,
-    String kernelPath,
+    bool previewDart2: false,
     bool prebuiltApplication: false,
     bool applicationNeedsRebuild: false,
+    bool usesTerminalUi: true,
   }) async {
     if (!prebuiltApplication) {
       printTrace('Building ${app.name} for $id.');
 
       try {
-        await _setupUpdatedApplicationBundle(app);
+        await _setupUpdatedApplicationBundle(app, debuggingOptions.buildInfo.flavor);
       } on ToolExit catch (e) {
         printError(e.message);
         return new LaunchResult.failed();
@@ -342,7 +342,7 @@ class IOSSimulator extends Device {
     }
 
     if (debuggingOptions.debuggingEnabled) {
-      if (debuggingOptions.buildMode == BuildMode.debug)
+      if (debuggingOptions.buildInfo.isDebug)
         args.add('--enable-checked-mode');
       if (debuggingOptions.startPaused)
         args.add('--start-paused');
@@ -394,17 +394,17 @@ class IOSSimulator extends Device {
     return criteria.reduce((bool a, bool b) => a && b);
   }
 
-  Future<Null> _setupUpdatedApplicationBundle(ApplicationPackage app) async {
+  Future<Null> _setupUpdatedApplicationBundle(ApplicationPackage app, String flavor) async {
     await _sideloadUpdatedAssetsForInstalledApplicationBundle(app);
 
     if (!await _applicationIsInstalledAndRunning(app))
-      return _buildAndInstallApplicationBundle(app);
+      return _buildAndInstallApplicationBundle(app, flavor);
   }
 
-  Future<Null> _buildAndInstallApplicationBundle(ApplicationPackage app) async {
+  Future<Null> _buildAndInstallApplicationBundle(ApplicationPackage app, String flavor) async {
     // Step 1: Build the Xcode project.
     // The build mode for the simulator is always debug.
-    final XcodeBuildResult buildResult = await buildXcodeProject(app: app, mode: BuildMode.debug, buildForDevice: false);
+    final XcodeBuildResult buildResult = await buildXcodeProject(app: app, buildInfo: new BuildInfo(BuildMode.debug, flavor), buildForDevice: false);
     if (!buildResult.success)
       throwToolExit('Could not build the application for the simulator.');
 
@@ -696,7 +696,7 @@ class _IOSSimulatorDevicePortForwarder extends DevicePortForwarder {
   }
 
   @override
-  Future<int> forward(int devicePort, {int hostPort: null}) async {
+  Future<int> forward(int devicePort, {int hostPort}) async {
     if ((hostPort == null) || (hostPort == 0)) {
       hostPort = devicePort;
     }

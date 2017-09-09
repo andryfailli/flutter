@@ -175,18 +175,13 @@ class Material extends StatefulWidget {
   _MaterialState createState() => new _MaterialState();
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('$type');
-    description.add('elevation: ${elevation.toStringAsFixed(1)}');
-    if (color != null)
-      description.add('color: $color');
-    if (textStyle != null) {
-      for (String entry in '$textStyle'.split('\n'))
-        description.add('textStyle.$entry');
-    }
-    if (borderRadius != null)
-      description.add('borderRadius: $borderRadius');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new EnumProperty<MaterialType>('type', type));
+    description.add(new DoubleProperty('elevation', elevation));
+    description.add(new DiagnosticsProperty<Color>('color', color, defaultValue: null));
+    textStyle?.debugFillProperties(description, prefix: 'textStyle.');
+    description.add(new EnumProperty<BorderRadius>('borderRadius', borderRadius, defaultValue: null));
   }
 
   /// The default radius of an ink splash in logical pixels.
@@ -294,24 +289,26 @@ class _RenderInkFeatures extends RenderProxyBox implements MaterialInkController
   @override
   Color color;
 
-  final List<InkFeature> _inkFeatures = <InkFeature>[];
+  List<InkFeature> _inkFeatures;
 
   @override
   void addInkFeature(InkFeature feature) {
     assert(!feature._debugDisposed);
     assert(feature._controller == this);
+    _inkFeatures ??= <InkFeature>[];
     assert(!_inkFeatures.contains(feature));
     _inkFeatures.add(feature);
     markNeedsPaint();
   }
 
   void _removeFeature(InkFeature feature) {
+    assert(_inkFeatures != null);
     _inkFeatures.remove(feature);
     markNeedsPaint();
   }
 
   void _didChangeLayout() {
-    if (_inkFeatures.isNotEmpty)
+    if (_inkFeatures != null && _inkFeatures.isNotEmpty)
       markNeedsPaint();
   }
 
@@ -320,7 +317,7 @@ class _RenderInkFeatures extends RenderProxyBox implements MaterialInkController
 
   @override
   void paint(PaintingContext context, Offset offset) {
-    if (_inkFeatures.isNotEmpty) {
+    if (_inkFeatures != null && _inkFeatures.isNotEmpty) {
       final Canvas canvas = context.canvas;
       canvas.save();
       canvas.translate(offset.dx, offset.dy);
@@ -334,7 +331,12 @@ class _RenderInkFeatures extends RenderProxyBox implements MaterialInkController
 }
 
 class _InkFeatures extends SingleChildRenderObjectWidget {
-  const _InkFeatures({ Key key, this.color, Widget child, @required this.vsync }) : super(key: key, child: child);
+  const _InkFeatures({
+    Key key,
+    this.color,
+    @required this.vsync,
+    Widget child,
+  }) : super(key: key, child: child);
 
   // This widget must be owned by a MaterialState, which must be provided as the vsync.
   // This relationship must be 1:1 and cannot change for the lifetime of the MaterialState.
@@ -347,7 +349,7 @@ class _InkFeatures extends SingleChildRenderObjectWidget {
   _RenderInkFeatures createRenderObject(BuildContext context) {
     return new _RenderInkFeatures(
       color: color,
-      vsync: vsync
+      vsync: vsync,
     );
   }
 
@@ -368,7 +370,7 @@ abstract class InkFeature {
   InkFeature({
     @required MaterialInkController controller,
     @required this.referenceBox,
-    this.onRemoved
+    this.onRemoved,
   }) : assert(controller != null),
        assert(referenceBox != null),
        _controller = controller;

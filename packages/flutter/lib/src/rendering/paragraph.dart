@@ -4,9 +4,10 @@
 
 import 'dart:ui' as ui show Gradient, Shader, TextBox;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
-import 'package:meta/meta.dart';
+
 
 import 'box.dart';
 import 'debug.dart';
@@ -31,19 +32,22 @@ const String _kEllipsis = '\u2026';
 class RenderParagraph extends RenderBox {
   /// Creates a paragraph render object.
   ///
-  /// The [text], [overflow], [softWrap], and [textScaleFactor] arguments must
-  /// not be null.
+  /// The [text], [textAlign], [textDirection], [overflow], [softWrap], and
+  /// [textScaleFactor] arguments must not be null.
   ///
   /// The [maxLines] property may be null (and indeed defaults to null), but if
   /// it is not null, it must be greater than zero.
   RenderParagraph(TextSpan text, {
-    TextAlign textAlign,
+    TextAlign textAlign: TextAlign.start,
+    @required TextDirection textDirection,
     bool softWrap: true,
     TextOverflow overflow: TextOverflow.clip,
     double textScaleFactor: 1.0,
     int maxLines,
   }) : assert(text != null),
        assert(text.debugAssertIsValid()),
+       assert(textAlign != null),
+       assert(textDirection != null),
        assert(softWrap != null),
        assert(overflow != null),
        assert(textScaleFactor != null),
@@ -53,6 +57,7 @@ class RenderParagraph extends RenderBox {
        _textPainter = new TextPainter(
          text: text,
          textAlign: textAlign,
+         textDirection: textDirection,
          textScaleFactor: textScaleFactor,
          maxLines: maxLines,
          ellipsis: overflow == TextOverflow.ellipsis ? _kEllipsis : null,
@@ -64,20 +69,52 @@ class RenderParagraph extends RenderBox {
   TextSpan get text => _textPainter.text;
   set text(TextSpan value) {
     assert(value != null);
-    if (_textPainter.text == value)
-      return;
-    _textPainter.text = value;
-    _overflowShader = null;
-    markNeedsLayout();
+    switch (_textPainter.text.compareTo(value)) {
+      case RenderComparison.identical:
+      case RenderComparison.metadata:
+        return;
+      case RenderComparison.paint:
+        _textPainter.text = value;
+        markNeedsPaint();
+        break;
+      case RenderComparison.layout:
+        _textPainter.text = value;
+        _overflowShader = null;
+        markNeedsLayout();
+        break;
+    }
   }
 
   /// How the text should be aligned horizontally.
   TextAlign get textAlign => _textPainter.textAlign;
   set textAlign(TextAlign value) {
+    assert(value != null);
     if (_textPainter.textAlign == value)
       return;
     _textPainter.textAlign = value;
     markNeedsPaint();
+  }
+
+  /// The directionality of the text.
+  ///
+  /// This decides how the [TextAlign.start], [TextAlign.end], and
+  /// [TextAlign.justify] values of [textAlign] are interpreted.
+  ///
+  /// This is also used to disambiguate how to render bidirectional text. For
+  /// example, if the [text] is an English phrase followed by a Hebrew phrase,
+  /// in a [TextDirection.ltr] context the English phrase will be on the left
+  /// and the Hebrew phrase to its right, while in a [TextDirection.rtl]
+  /// context, the English phrase will be on the right and the Hebrow phrase on
+  /// its left.
+  ///
+  /// This must not be null.
+  TextDirection get textDirection => _textPainter.textDirection;
+  set textDirection(TextDirection value) {
+    assert(value != null);
+    if (_textPainter.textDirection == value)
+      return;
+    _textPainter.textDirection = value;
+    markNeedsLayout();
   }
 
   /// Whether the text should break at soft line breaks.
@@ -138,7 +175,8 @@ class RenderParagraph extends RenderBox {
   }
 
   void _layoutText({ double minWidth: 0.0, double maxWidth: double.INFINITY }) {
-    _textPainter.layout(minWidth: minWidth, maxWidth: _softWrap ? maxWidth : double.INFINITY);
+    final bool widthMatters = softWrap || overflow == TextOverflow.ellipsis;
+    _textPainter.layout(minWidth: minWidth, maxWidth: widthMatters ? maxWidth : double.INFINITY);
   }
 
   void _layoutTextWithConstraints(BoxConstraints constraints) {
@@ -232,14 +270,24 @@ class RenderParagraph extends RenderBox {
           _overflowShader = null;
           break;
         case TextOverflow.fade:
+          assert(textDirection != null);
           final TextPainter fadeSizePainter = new TextPainter(
             text: new TextSpan(style: _textPainter.text.style, text: '\u2026'),
-            textScaleFactor: textScaleFactor
+            textDirection: textDirection,
+            textScaleFactor: textScaleFactor,
           )..layout();
           if (didOverflowWidth) {
-            final double fadeEnd = size.width;
-            final double fadeStart = fadeEnd - fadeSizePainter.width;
-            // TODO(abarth): This shader has an LTR bias.
+            double fadeEnd, fadeStart;
+            switch (textDirection) {
+              case TextDirection.rtl:
+                fadeEnd = 0.0;
+                fadeStart = fadeSizePainter.width;
+                break;
+              case TextDirection.ltr:
+                fadeEnd = size.width;
+                fadeStart = fadeEnd - fadeSizePainter.width;
+                break;
+            }
             _overflowShader = new ui.Gradient.linear(
               new Offset(fadeStart, 0.0),
               new Offset(fadeEnd, 0.0),
@@ -287,10 +335,13 @@ class RenderParagraph extends RenderBox {
 
     if (_hasVisualOverflow) {
       final Rect bounds = offset & size;
-      if (_overflowShader != null)
+      if (_overflowShader != null) {
+        // This layer limits what the shader below blends with to be just the text
+        // (as opposed to the text and its background).
         canvas.saveLayer(bounds, new Paint());
-      else
+      } else {
         canvas.save();
+      }
       canvas.clipRect(bounds);
     }
     _textPainter.paint(canvas, offset);
@@ -357,13 +408,22 @@ class RenderParagraph extends RenderBox {
 
   void _annotate(SemanticsNode node) {
     node.label = text.toPlainText();
+    node.textDirection = textDirection;
   }
 
   @override
-  String debugDescribeChildren(String prefix) {
-    return '$prefix \u2558\u2550\u2566\u2550\u2550 text \u2550\u2550\u2550\n'
-           '${text.toString("$prefix   \u2551 ")}' // TextSpan includes a newline
-           '$prefix   \u255A\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n'
-           '${prefix.trimRight()}\n';
+  List<DiagnosticsNode> debugDescribeChildren() {
+    return <DiagnosticsNode>[text.toDiagnosticsNode(name: 'text', style: DiagnosticsTreeStyle.transition)];
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new EnumProperty<TextAlign>('textAlign', textAlign));
+    description.add(new EnumProperty<TextDirection>('textDirection', textDirection));
+    description.add(new FlagProperty('softWrap', value: softWrap, ifTrue: 'wrapping at box width', ifFalse: 'no wrapping except at line break characters', showName: true));
+    description.add(new EnumProperty<TextOverflow>('overflow', overflow));
+    description.add(new DoubleProperty('textScaleFactor', textScaleFactor, defaultValue: 1.0));
+    description.add(new IntProperty('maxLines', maxLines, ifNull: 'unlimited'));
   }
 }

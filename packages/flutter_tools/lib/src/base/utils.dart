@@ -10,21 +10,26 @@ import 'package:crypto/crypto.dart';
 import 'package:intl/intl.dart';
 import 'package:quiver/time.dart';
 
+import '../globals.dart';
 import 'context.dart';
 import 'file_system.dart';
 import 'platform.dart';
 
 bool get isRunningOnBot {
-  // https://docs.travis-ci.com/user/environment-variables/#Default-Environment-Variables
-  // https://www.appveyor.com/docs/environment-variables/
-  // CHROME_HEADLESS is one property set on Flutter's Chrome Infra bots.
   return
-    platform.environment['TRAVIS'] == 'true' ||
     platform.environment['BOT'] == 'true' ||
+
+    // https://docs.travis-ci.com/user/environment-variables/#Default-Environment-Variables
+    platform.environment['TRAVIS'] == 'true' ||
     platform.environment['CONTINUOUS_INTEGRATION'] == 'true' ||
+    platform.environment.containsKey('CI') || // Travis and AppVeyor
+
+    // https://www.appveyor.com/docs/environment-variables/
+    platform.environment.containsKey('APPVEYOR') ||
+
+    // Properties on Flutter's Chrome Infra bots.
     platform.environment['CHROME_HEADLESS'] == '1' ||
-    platform.environment['APPVEYOR'] == 'true' ||
-    platform.environment['CI'] == 'true';
+    platform.environment.containsKey('BUILDBOT_BUILDERNAME');
 }
 
 String hex(List<int> bytes) {
@@ -212,3 +217,42 @@ class Uuid {
 }
 
 Clock get clock => context.putIfAbsent(Clock, () => const Clock());
+
+typedef Future<Null> AsyncCallback();
+
+/// A [Timer] inspired class that:
+///   - has a different initial value for the first callback delay
+///   - waits for a callback to be complete before it starts the next timer
+class Poller {
+  Poller(this.callback, this.pollingInterval, { this.initialDelay: Duration.ZERO }) {
+    new Future<Null>.delayed(initialDelay, _handleCallback);
+  }
+
+  final AsyncCallback callback;
+  final Duration initialDelay;
+  final Duration pollingInterval;
+
+  bool _cancelled = false;
+  Timer _timer;
+
+  Future<Null> _handleCallback() async {
+    if (_cancelled)
+      return;
+
+    try {
+      await callback();
+    } catch (error) {
+      printTrace('Error from poller: $error');
+    }
+
+    if (!_cancelled)
+      _timer = new Timer(pollingInterval, _handleCallback);
+  }
+
+  /// Cancels the poller.
+  void cancel() {
+    _cancelled = true;
+    _timer?.cancel();
+    _timer = null;
+  }
+}

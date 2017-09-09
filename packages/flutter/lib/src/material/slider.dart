@@ -64,6 +64,7 @@ class Slider extends StatefulWidget {
     this.divisions,
     this.label,
     this.activeColor,
+    this.inactiveColor,
     this.thumbOpenAtMin: false,
   }) : assert(value != null),
        assert(min != null),
@@ -138,6 +139,11 @@ class Slider extends StatefulWidget {
   /// Defaults to accent color of the current [Theme].
   final Color activeColor;
 
+  /// The color for the unselected portion of the slider.
+  ///
+  /// Defaults to the unselected widget color of the current [Theme].
+  final Color inactiveColor;
+
   /// Whether the thumb should be an open circle when the slider is at its minimum position.
   ///
   /// When this property is false, the thumb does not change when it the slider
@@ -155,11 +161,11 @@ class Slider extends StatefulWidget {
   _SliderState createState() => new _SliderState();
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('value: ${value.toStringAsFixed(1)}');
-    description.add('min: $min');
-    description.add('max: $max');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DoubleProperty('value', value));
+    description.add(new DoubleProperty('min', min));
+    description.add(new DoubleProperty('max', max));
   }
 }
 
@@ -178,6 +184,7 @@ class _SliderState extends State<Slider> with TickerProviderStateMixin {
       divisions: widget.divisions,
       label: widget.label,
       activeColor: widget.activeColor ?? theme.accentColor,
+      inactiveColor: widget.inactiveColor ?? theme.unselectedWidgetColor,
       thumbOpenAtMin: widget.thumbOpenAtMin,
       textTheme: theme.accentTextTheme,
       onChanged: (widget.onChanged != null) && (widget.max > widget.min) ? _handleChanged : null,
@@ -193,6 +200,7 @@ class _SliderRenderObjectWidget extends LeafRenderObjectWidget {
     this.divisions,
     this.label,
     this.activeColor,
+    this.inactiveColor,
     this.thumbOpenAtMin,
     this.textTheme,
     this.onChanged,
@@ -203,6 +211,7 @@ class _SliderRenderObjectWidget extends LeafRenderObjectWidget {
   final int divisions;
   final String label;
   final Color activeColor;
+  final Color inactiveColor;
   final bool thumbOpenAtMin;
   final TextTheme textTheme;
   final ValueChanged<double> onChanged;
@@ -215,10 +224,12 @@ class _SliderRenderObjectWidget extends LeafRenderObjectWidget {
       divisions: divisions,
       label: label,
       activeColor: activeColor,
+      inactiveColor: inactiveColor,
       thumbOpenAtMin: thumbOpenAtMin,
       textTheme: textTheme,
       onChanged: onChanged,
       vsync: vsync,
+      textDirection: Directionality.of(context),
     );
   }
 
@@ -229,9 +240,11 @@ class _SliderRenderObjectWidget extends LeafRenderObjectWidget {
       ..divisions = divisions
       ..label = label
       ..activeColor = activeColor
+      ..inactiveColor = inactiveColor
       ..thumbOpenAtMin = thumbOpenAtMin
       ..textTheme = textTheme
-      ..onChanged = onChanged;
+      ..onChanged = onChanged
+      ..textDirection = Directionality.of(context);
       // Ticker provider cannot change since there's a 1:1 relationship between
       // the _SliderRenderObjectWidget object and the _SliderState object.
   }
@@ -246,11 +259,9 @@ const double _kMinimumTrackWidth = _kActiveThumbRadius; // biggest of the thumb 
 const double _kPreferredTotalWidth = _kPreferredTrackWidth + 2 * _kReactionRadius;
 const double _kMinimumTotalWidth = _kMinimumTrackWidth + 2 * _kReactionRadius;
 
-final Color _kInactiveTrackColor = Colors.grey.shade400;
 final Color _kActiveTrackColor = Colors.grey;
 final Tween<double> _kReactionRadiusTween = new Tween<double>(begin: _kThumbRadius, end: _kReactionRadius);
 final Tween<double> _kThumbRadiusTween = new Tween<double>(begin: _kThumbRadius, end: _kActiveThumbRadius);
-final ColorTween _kTrackColorTween = new ColorTween(begin: _kInactiveTrackColor, end: _kActiveTrackColor);
 final ColorTween _kTickColorTween = new ColorTween(begin: Colors.transparent, end: Colors.black54);
 final Duration _kDiscreteTransitionDuration = const Duration(milliseconds: 500);
 
@@ -276,17 +287,24 @@ class _RenderSlider extends RenderBox implements SemanticsActionHandler {
     int divisions,
     String label,
     Color activeColor,
+    Color inactiveColor,
     bool thumbOpenAtMin,
     TextTheme textTheme,
-    this.onChanged,
+    ValueChanged<double> onChanged,
     TickerProvider vsync,
+    @required TextDirection textDirection,
   }) : assert(value != null && value >= 0.0 && value <= 1.0),
+       assert(textDirection != null),
+       _label = label,
        _value = value,
        _divisions = divisions,
        _activeColor = activeColor,
+       _inactiveColor = inactiveColor,
        _thumbOpenAtMin = thumbOpenAtMin,
-       _textTheme = textTheme {
-    this.label = label;
+       _textTheme = textTheme,
+       _onChanged = onChanged,
+       _textDirection = textDirection {
+    _updateLabelPainter();
     final GestureArenaTeam team = new GestureArenaTeam();
     _drag = new HorizontalDragGestureRecognizer()
       ..team = team
@@ -339,19 +357,7 @@ class _RenderSlider extends RenderBox implements SemanticsActionHandler {
     if (value == _label)
       return;
     _label = value;
-    if (value != null) {
-      // TODO(abarth): Handle textScaleFactor.
-      // https://github.com/flutter/flutter/issues/5938
-      _labelPainter
-        ..text = new TextSpan(
-          style: _textTheme.body1.copyWith(fontSize: 10.0),
-          text: value
-        )
-        ..layout();
-    } else {
-      _labelPainter.text = null;
-    }
-    markNeedsLayout();
+    _updateLabelPainter();
   }
 
   Color get activeColor => _activeColor;
@@ -360,6 +366,15 @@ class _RenderSlider extends RenderBox implements SemanticsActionHandler {
     if (value == _activeColor)
       return;
     _activeColor = value;
+    markNeedsPaint();
+  }
+
+  Color get inactiveColor => _inactiveColor;
+  Color _inactiveColor;
+  set inactiveColor(Color value) {
+    if (value == _inactiveColor)
+      return;
+    _inactiveColor = value;
     markNeedsPaint();
   }
 
@@ -381,7 +396,47 @@ class _RenderSlider extends RenderBox implements SemanticsActionHandler {
     markNeedsPaint();
   }
 
-  ValueChanged<double> onChanged;
+  ValueChanged<double> get onChanged => _onChanged;
+  ValueChanged<double> _onChanged;
+  set onChanged(ValueChanged<double> value) {
+    if (value == _onChanged)
+      return;
+    final bool wasInteractive = isInteractive;
+    _onChanged = value;
+    if (wasInteractive != isInteractive) {
+      markNeedsPaint();
+      markNeedsSemanticsUpdate(noGeometry: true);
+    }
+  }
+
+  TextDirection get textDirection => _textDirection;
+  TextDirection _textDirection;
+  set textDirection(TextDirection value) {
+    assert(value != null);
+    if (value == _textDirection)
+      return;
+    _textDirection = value;
+    _updateLabelPainter();
+  }
+
+  void _updateLabelPainter() {
+    if (label != null) {
+      // TODO(abarth): Handle textScaleFactor. https://github.com/flutter/flutter/issues/5938
+      _labelPainter
+        ..text = new TextSpan(
+          style: _textTheme.body1.copyWith(fontSize: 10.0),
+          text: label,
+        )
+        ..textDirection = textDirection
+        ..layout();
+    } else {
+      _labelPainter.text = null;
+    }
+    // Changing the textDirection can result in the layout changing, because the
+    // bidi algorithm might line up the glyphs differently which can result in
+    // different ligatures, different shapes, etc. So we always markNeedsLayout.
+    markNeedsLayout();
+  }
 
   double get _trackLength => size.width - 2.0 * _kReactionRadius;
 
@@ -398,8 +453,19 @@ class _RenderSlider extends RenderBox implements SemanticsActionHandler {
 
   bool get isInteractive => onChanged != null;
 
+  double _getValueFromVisualPosition(double visualPosition) {
+    switch (textDirection) {
+      case TextDirection.rtl:
+        return 1.0 - visualPosition;
+      case TextDirection.ltr:
+        return visualPosition;
+    }
+    return null;
+  }
+
   double _getValueFromGlobalPosition(Offset globalPosition) {
-    return (globalToLocal(globalPosition).dx - _kReactionRadius) / _trackLength;
+    final double visualPosition = (globalToLocal(globalPosition).dx - _kReactionRadius) / _trackLength;
+    return _getValueFromVisualPosition(visualPosition);
   }
 
   double _discretize(double value) {
@@ -420,7 +486,15 @@ class _RenderSlider extends RenderBox implements SemanticsActionHandler {
 
   void _handleDragUpdate(DragUpdateDetails details) {
     if (isInteractive) {
-      _currentDragValue += details.primaryDelta / _trackLength;
+      final double valueDelta = details.primaryDelta / _trackLength;
+      switch (textDirection) {
+        case TextDirection.rtl:
+          _currentDragValue -= valueDelta;
+          break;
+        case TextDirection.ltr:
+          _currentDragValue += valueDelta;
+          break;
+      }
       onChanged(_discretize(_currentDragValue));
     }
   }
@@ -450,7 +524,6 @@ class _RenderSlider extends RenderBox implements SemanticsActionHandler {
       _tap.addPointer(event);
     }
   }
-
 
   @override
   double computeMinIntrinsicWidth(double height) {
@@ -492,6 +565,26 @@ class _RenderSlider extends RenderBox implements SemanticsActionHandler {
     final double trackLength = size.width - 2 * _kReactionRadius;
     final bool enabled = isInteractive;
     final double value = _position.value;
+    final bool thumbAtMin = value == 0.0;
+
+    final Paint primaryPaint = new Paint()..color = enabled ? _activeColor : _inactiveColor;
+    final Paint trackPaint = new Paint()..color = _inactiveColor;
+
+    double visualPosition;
+    Paint leftPaint;
+    Paint rightPaint;
+    switch (textDirection) {
+      case TextDirection.rtl:
+        visualPosition = 1.0 - value;
+        leftPaint = trackPaint;
+        rightPaint = primaryPaint;
+        break;
+      case TextDirection.ltr:
+        visualPosition = value;
+        leftPaint = primaryPaint;
+        rightPaint = trackPaint;
+        break;
+    }
 
     final double additionalHeightForLabel = _getAdditionalHeightForLabel(label);
     final double trackCenter = offset.dy + (size.height - additionalHeightForLabel) / 2.0 + additionalHeightForLabel;
@@ -499,26 +592,23 @@ class _RenderSlider extends RenderBox implements SemanticsActionHandler {
     final double trackTop = trackCenter - 1.0;
     final double trackBottom = trackCenter + 1.0;
     final double trackRight = trackLeft + trackLength;
-    final double trackActive = trackLeft + trackLength * value;
-
-    final Paint primaryPaint = new Paint()..color = enabled ? _activeColor : _kInactiveTrackColor;
-    final Paint trackPaint = new Paint()..color = _kTrackColorTween.evaluate(_reaction);
+    final double trackActive = trackLeft + trackLength * visualPosition;
 
     final Offset thumbCenter = new Offset(trackActive, trackCenter);
     final double thumbRadius = enabled ? _kThumbRadiusTween.evaluate(_reaction) : _kDisabledThumbRadius;
 
     if (enabled) {
-      if (value > 0.0)
-        canvas.drawRect(new Rect.fromLTRB(trackLeft, trackTop, trackActive, trackBottom), primaryPaint);
-      if (value < 1.0) {
+      if (visualPosition > 0.0)
+        canvas.drawRect(new Rect.fromLTRB(trackLeft, trackTop, trackActive, trackBottom), leftPaint);
+      if (visualPosition < 1.0) {
         final bool hasBalloon = _reaction.status != AnimationStatus.dismissed && label != null;
         final double trackActiveDelta = hasBalloon ? 0.0 : thumbRadius - 1.0;
-        canvas.drawRect(new Rect.fromLTRB(trackActive + trackActiveDelta, trackTop, trackRight, trackBottom), trackPaint);
+        canvas.drawRect(new Rect.fromLTRB(trackActive + trackActiveDelta, trackTop, trackRight, trackBottom), rightPaint);
       }
     } else {
-      if (value > 0.0)
+      if (visualPosition > 0.0)
         canvas.drawRect(new Rect.fromLTRB(trackLeft, trackTop, trackActive - _kDisabledThumbRadius - 2, trackBottom), trackPaint);
-      if (value < 1.0)
+      if (visualPosition < 1.0)
         canvas.drawRect(new Rect.fromLTRB(trackActive + _kDisabledThumbRadius + 2, trackTop, trackRight, trackBottom), trackPaint);
     }
 
@@ -550,7 +640,6 @@ class _RenderSlider extends RenderBox implements SemanticsActionHandler {
           ..lineTo(center.dx + tipAttachment, center.dy + tipAttachment)
           ..close();
         canvas.drawPath(path, primaryPaint);
-        _labelPainter.layout();
         final Offset labelOffset = new Offset(
           center.dx - _labelPainter.width / 2.0,
           center.dy - _labelPainter.height / 2.0
@@ -558,7 +647,7 @@ class _RenderSlider extends RenderBox implements SemanticsActionHandler {
         _labelPainter.paint(canvas, labelOffset);
         return;
       } else {
-        final Color reactionBaseColor = value == 0.0 ? _kActiveTrackColor : _activeColor;
+        final Color reactionBaseColor = thumbAtMin ? _kActiveTrackColor : _activeColor;
         final Paint reactionPaint = new Paint()..color = reactionBaseColor.withAlpha(kRadialReactionAlpha);
         canvas.drawCircle(thumbCenter, _kReactionRadiusTween.evaluate(_reaction), reactionPaint);
       }
@@ -566,7 +655,7 @@ class _RenderSlider extends RenderBox implements SemanticsActionHandler {
 
     Paint thumbPaint = primaryPaint;
     double thumbRadiusDelta = 0.0;
-    if (value == 0.0 && thumbOpenAtMin) {
+    if (thumbAtMin && thumbOpenAtMin) {
       thumbPaint = trackPaint;
       // This is destructive to trackPaint.
       thumbPaint

@@ -3,9 +3,14 @@
 // found in the LICENSE file.
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 
+import 'colors.dart';
 import 'debug.dart';
+import 'drawer_header.dart';
+import 'icons.dart';
+import 'ink_well.dart';
+import 'theme.dart';
 
 class _AccountPictures extends StatelessWidget {
   const _AccountPictures({
@@ -148,7 +153,7 @@ class UserAccountsDrawerHeader extends StatefulWidget {
   final Decoration decoration;
 
   /// The margin around the drawer header.
-  final EdgeInsets margin;
+  final EdgeInsetsGeometry margin;
 
   /// A widget placed in the upper-left corner that represents the current
   /// user's account. Normally a [CircleAvatar].
@@ -178,6 +183,13 @@ class UserAccountsDrawerHeader extends StatefulWidget {
 class _UserAccountsDrawerHeaderState extends State<UserAccountsDrawerHeader> {
   bool _isOpen = false;
 
+  void _handleDetailsPressed() {
+    setState(() {
+      _isOpen = !_isOpen;
+    });
+    widget.onDetailsPressed();
+  }
+
   @override
   Widget build(BuildContext context) {
     assert(debugCheckHasMaterial(context));
@@ -199,12 +211,7 @@ class _UserAccountsDrawerHeaderState extends State<UserAccountsDrawerHeader> {
             accountName: widget.accountName,
             accountEmail: widget.accountEmail,
             isOpen: _isOpen,
-            onTap: widget.onDetailsPressed == null ? null : () {
-              setState(() {
-                _isOpen = !_isOpen;
-              });
-              widget.onDetailsPressed();
-            },
+            onTap: widget.onDetailsPressed == null ? null : _handleDetailsPressed,
           ),
         ],
       ),

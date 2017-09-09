@@ -17,6 +17,10 @@ import 'icon_theme_data.dart';
 /// Icons are not interactive. For an interactive icon, consider material's
 /// [IconButton].
 ///
+/// There must be an ambient [Directionality] widget when using [Icon].
+/// Typically this is introduced automatically by the [WidgetsApp] or
+/// [MaterialApp].
+///
 /// See also:
 ///
 ///  * [IconButton], for interactive icons.
@@ -80,6 +84,9 @@ class Icon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final TextDirection textDirection = Directionality.of(context);
+    assert(textDirection != null, 'Icon widgets required an ambient Directionality.');
+
     final IconThemeData iconTheme = IconTheme.of(context);
 
     final double iconSize = size ?? iconTheme.size;
@@ -98,32 +105,27 @@ class Icon extends StatelessWidget {
         height: iconSize,
         child: new Center(
           child: new RichText(
+            textDirection: textDirection, // Since we already fetched it for the assert...
             text: new TextSpan(
               text: new String.fromCharCode(icon.codePoint),
               style: new TextStyle(
                 inherit: false,
                 color: iconColor,
                 fontSize: iconSize,
-                fontFamily: icon.fontFamily
-              )
-            )
-          )
-        )
-      )
+                fontFamily: icon.fontFamily,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    if (icon != null) {
-      description.add('$icon');
-    } else {
-      description.add('<empty>');
-    }
-    if (size != null)
-      description.add('size: $size');
-    if (color != null)
-      description.add('color: $color');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<IconData>('icon', icon, ifNull: '<empty>', showName: false));
+    description.add(new DoubleProperty('size', size, defaultValue: null));
+    description.add(new DiagnosticsProperty<Color>('color', color, defaultValue: null));
   }
 }

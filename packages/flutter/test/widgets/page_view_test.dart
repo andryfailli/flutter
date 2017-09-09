@@ -14,19 +14,22 @@ void main() {
   testWidgets('PageView control test', (WidgetTester tester) async {
     final List<String> log = <String>[];
 
-    await tester.pumpWidget(new PageView(
-      children: kStates.map<Widget>((String state) {
-        return new GestureDetector(
-          onTap: () {
-            log.add(state);
-          },
-          child: new Container(
-            height: 200.0,
-            color: const Color(0xFF0000FF),
-            child: new Text(state),
-          ),
-        );
-      }).toList(),
+    await tester.pumpWidget(new Directionality(
+      textDirection: TextDirection.ltr,
+      child: new PageView(
+        children: kStates.map<Widget>((String state) {
+          return new GestureDetector(
+            onTap: () {
+              log.add(state);
+            },
+            child: new Container(
+              height: 200.0,
+              color: const Color(0xFF0000FF),
+              child: new Text(state),
+            ),
+          );
+        }).toList(),
+      ),
     ));
 
     await tester.tap(find.text('Alabama'));
@@ -35,7 +38,7 @@ void main() {
 
     expect(find.text('Alaska'), findsNothing);
 
-    await tester.drag(find.byType(PageView), const Offset(-10.0, 0.0));
+    await tester.drag(find.byType(PageView), const Offset(-20.0, 0.0));
     await tester.pump();
 
     expect(find.text('Alabama'), findsOneWidget);
@@ -93,29 +96,34 @@ void main() {
     expect(leftOf(0), equals(0.0));
     expect(sizeOf(0), equals(const Size(800.0, 600.0)));
 
+    // Going into overscroll.
     await tester.drag(find.byType(PageView), const Offset(100.0, 0.0));
     await tester.pump();
 
-    expect(leftOf(0), equals(100.0));
+    expect(leftOf(0), greaterThan(0.0));
     expect(sizeOf(0), equals(const Size(800.0, 600.0)));
 
+    // Easing overscroll past overscroll limit.
     await tester.drag(find.byType(PageView), const Offset(-200.0, 0.0));
     await tester.pump();
 
-    expect(leftOf(0), equals(-100.0));
+    expect(leftOf(0), lessThan(0.0));
     expect(sizeOf(0), equals(const Size(800.0, 600.0)));
   });
 
   testWidgets('PageController control test', (WidgetTester tester) async {
     final PageController controller = new PageController(initialPage: 4);
 
-    await tester.pumpWidget(new Center(
-      child: new SizedBox(
-        width: 600.0,
-        height: 400.0,
-        child: new PageView(
-          controller: controller,
-          children: kStates.map<Widget>((String state) => new Text(state)).toList(),
+    await tester.pumpWidget(new Directionality(
+      textDirection: TextDirection.ltr,
+      child: new Center(
+        child: new SizedBox(
+          width: 600.0,
+          height: 400.0,
+          child: new PageView(
+            controller: controller,
+            children: kStates.map<Widget>((String state) => new Text(state)).toList(),
+          ),
         ),
       ),
     ));
@@ -127,13 +135,16 @@ void main() {
 
     expect(find.text('Colorado'), findsOneWidget);
 
-    await tester.pumpWidget(new Center(
-      child: new SizedBox(
-        width: 300.0,
-        height: 400.0,
-        child: new PageView(
-          controller: controller,
-          children: kStates.map<Widget>((String state) => new Text(state)).toList(),
+    await tester.pumpWidget(new Directionality(
+      textDirection: TextDirection.ltr,
+      child: new Center(
+        child: new SizedBox(
+          width: 300.0,
+          height: 400.0,
+          child: new PageView(
+            controller: controller,
+            children: kStates.map<Widget>((String state) => new Text(state)).toList(),
+          ),
         ),
       ),
     ));
@@ -147,13 +158,16 @@ void main() {
   });
 
   testWidgets('PageController page stability', (WidgetTester tester) async {
-    await tester.pumpWidget(new Center(
-      child: new SizedBox(
-        width: 600.0,
-        height: 400.0,
-        child: new PageView(
-          children: kStates.map<Widget>((String state) => new Text(state)).toList(),
-        ),
+    await tester.pumpWidget(new Directionality(
+      textDirection: TextDirection.ltr,
+      child: new Center(
+        child: new SizedBox(
+          width: 600.0,
+          height: 400.0,
+          child: new PageView(
+            children: kStates.map<Widget>((String state) => new Text(state)).toList(),
+          ),
+        )
       ),
     ));
 
@@ -164,24 +178,30 @@ void main() {
 
     expect(find.text('Arizona'), findsOneWidget);
 
-    await tester.pumpWidget(new Center(
-      child: new SizedBox(
-        width: 250.0,
-        height: 100.0,
-        child: new PageView(
-          children: kStates.map<Widget>((String state) => new Text(state)).toList(),
+    await tester.pumpWidget(new Directionality(
+      textDirection: TextDirection.ltr,
+      child: new Center(
+        child: new SizedBox(
+          width: 250.0,
+          height: 100.0,
+          child: new PageView(
+            children: kStates.map<Widget>((String state) => new Text(state)).toList(),
+          ),
         ),
       ),
     ));
 
     expect(find.text('Arizona'), findsOneWidget);
 
-    await tester.pumpWidget(new Center(
-      child: new SizedBox(
-        width: 450.0,
-        height: 400.0,
-        child: new PageView(
-          children: kStates.map<Widget>((String state) => new Text(state)).toList(),
+    await tester.pumpWidget(new Directionality(
+      textDirection: TextDirection.ltr,
+      child: new Center(
+        child: new SizedBox(
+          width: 450.0,
+          height: 400.0,
+          child: new PageView(
+            children: kStates.map<Widget>((String state) => new Text(state)).toList(),
+          ),
         ),
       ),
     ));
@@ -190,24 +210,30 @@ void main() {
   });
 
   testWidgets('PageView in zero-size container', (WidgetTester tester) async {
-    await tester.pumpWidget(new Center(
-      child: new SizedBox(
-        width: 0.0,
-        height: 0.0,
-        child: new PageView(
-          children: kStates.map<Widget>((String state) => new Text(state)).toList(),
+    await tester.pumpWidget(new Directionality(
+      textDirection: TextDirection.ltr,
+      child: new Center(
+        child: new SizedBox(
+          width: 0.0,
+          height: 0.0,
+          child: new PageView(
+            children: kStates.map<Widget>((String state) => new Text(state)).toList(),
+          ),
         ),
       ),
     ));
 
     expect(find.text('Alabama'), findsOneWidget);
 
-    await tester.pumpWidget(new Center(
-      child: new SizedBox(
-        width: 200.0,
-        height: 200.0,
-        child: new PageView(
-          children: kStates.map<Widget>((String state) => new Text(state)).toList(),
+    await tester.pumpWidget(new Directionality(
+      textDirection: TextDirection.ltr,
+      child: new Center(
+        child: new SizedBox(
+          width: 200.0,
+          height: 200.0,
+          child: new PageView(
+            children: kStates.map<Widget>((String state) => new Text(state)).toList(),
+          ),
         ),
       ),
     ));
@@ -217,9 +243,12 @@ void main() {
 
   testWidgets('Page changes at halfway point', (WidgetTester tester) async {
     final List<int> log = <int>[];
-    await tester.pumpWidget(new PageView(
-      onPageChanged: log.add,
-      children: kStates.map<Widget>((String state) => new Text(state)).toList(),
+    await tester.pumpWidget(new Directionality(
+      textDirection: TextDirection.ltr,
+      child: new PageView(
+        onPageChanged: log.add,
+        children: kStates.map<Widget>((String state) => new Text(state)).toList(),
+      ),
     ));
 
     expect(log, isEmpty);
@@ -266,18 +295,21 @@ void main() {
     PageController controller = new PageController(viewportFraction: 7/8);
 
     Widget build(PageController controller) {
-      return new PageView.builder(
-        controller: controller,
-        itemCount: kStates.length,
-        itemBuilder: (BuildContext context, int index) {
-          return new Container(
-            height: 200.0,
-            color: index % 2 == 0
-                ? const Color(0xFF0000FF)
-                : const Color(0xFF00FF00),
-            child: new Text(kStates[index]),
-          );
-        },
+      return new Directionality(
+        textDirection: TextDirection.ltr,
+        child: new PageView.builder(
+          controller: controller,
+          itemCount: kStates.length,
+          itemBuilder: (BuildContext context, int index) {
+            return new Container(
+              height: 200.0,
+              color: index % 2 == 0
+                  ? const Color(0xFF0000FF)
+                  : const Color(0xFF00FF00),
+              child: new Text(kStates[index]),
+            );
+          },
+        ),
       );
     }
 
@@ -306,18 +338,21 @@ void main() {
     final PageController controller = new PageController(viewportFraction: 1/8);
 
     Widget build(PageController controller) {
-      return new PageView.builder(
-        controller: controller,
-        itemCount: kStates.length,
-        itemBuilder: (BuildContext context, int index) {
-          return new Container(
-            height: 200.0,
-            color: index % 2 == 0
-                ? const Color(0xFF0000FF)
-                : const Color(0xFF00FF00),
-            child: new Text(kStates[index]),
-          );
-        },
+      return new Directionality(
+        textDirection: TextDirection.ltr,
+        child: new PageView.builder(
+          controller: controller,
+          itemCount: kStates.length,
+          itemBuilder: (BuildContext context, int index) {
+            return new Container(
+              height: 200.0,
+              color: index % 2 == 0
+                  ? const Color(0xFF0000FF)
+                  : const Color(0xFF00FF00),
+              child: new Text(kStates[index]),
+            );
+          },
+        ),
       );
     }
 
@@ -348,18 +383,21 @@ void main() {
         new PageController(viewportFraction: 5/4);
 
     Widget build(PageController controller) {
-      return new PageView.builder(
-        controller: controller,
-        itemCount: kStates.length,
-        itemBuilder: (BuildContext context, int index) {
-          return new Container(
-            height: 200.0,
-            color: index % 2 == 0
-                ? const Color(0xFF0000FF)
-                : const Color(0xFF00FF00),
-            child: new Text(kStates[index]),
-          );
-        },
+      return new Directionality(
+        textDirection: TextDirection.ltr,
+        child: new PageView.builder(
+          controller: controller,
+          itemCount: kStates.length,
+          itemBuilder: (BuildContext context, int index) {
+            return new Container(
+              height: 200.0,
+              color: index % 2 == 0
+                  ? const Color(0xFF0000FF)
+                  : const Color(0xFF00FF00),
+              child: new Text(kStates[index]),
+            );
+          },
+        ),
       );
     }
 
@@ -381,13 +419,16 @@ void main() {
     );
     int changeIndex = 0;
     Widget build() {
-      return new PageView(
-        children:
-            kStates.map<Widget>((String state) => new Text(state)).toList(),
-        controller: controller,
-        onPageChanged: (int page) {
-          changeIndex = page;
-        },
+      return new Directionality(
+        textDirection: TextDirection.ltr,
+        child: new PageView(
+          children:
+              kStates.map<Widget>((String state) => new Text(state)).toList(),
+          controller: controller,
+          onPageChanged: (int page) {
+            changeIndex = page;
+          },
+        ),
       );
     }
 
@@ -403,8 +444,9 @@ void main() {
       (WidgetTester tester) async {
     final PageController controller = new PageController();
     final PageStorageBucket bucket = new PageStorageBucket();
-    await tester.pumpWidget(
-      new PageStorage(
+    await tester.pumpWidget(new Directionality(
+      textDirection: TextDirection.ltr,
+      child: new PageStorage(
         bucket: bucket,
         child: new PageView(
           key: const PageStorageKey<String>('PageView'),
@@ -416,7 +458,7 @@ void main() {
           ],
         ),
       ),
-    );
+    ));
     expect(controller.page, 0);
     controller.jumpToPage(2);
     expect(await tester.pumpAndSettle(const Duration(minutes: 1)), 1);
@@ -428,8 +470,9 @@ void main() {
       ),
     );
     expect(() => controller.page, throwsAssertionError);
-    await tester.pumpWidget(
-      new PageStorage(
+    await tester.pumpWidget(new Directionality(
+      textDirection: TextDirection.ltr,
+      child: new PageStorage(
         bucket: bucket,
         child: new PageView(
           key: const PageStorageKey<String>('PageView'),
@@ -441,12 +484,13 @@ void main() {
           ],
         ),
       ),
-    );
+    ));
     expect(controller.page, 2);
 
     final PageController controller2 = new PageController(keepPage: false);
-    await tester.pumpWidget(
-      new PageStorage(
+    await tester.pumpWidget(new Directionality(
+      textDirection: TextDirection.ltr,
+      child: new PageStorage(
         bucket: bucket,
         child: new PageView(
           key: const PageStorageKey<String>('Check it again against your list and see consistency!'),
@@ -458,7 +502,7 @@ void main() {
           ],
         ),
       ),
-    );
+    ));
     expect(controller2.page, 0);
   });
 }

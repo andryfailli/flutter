@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
@@ -22,13 +23,14 @@ void main() {
       child: const SizedBox(
         width: 10.0,
         height: 10.0,
-        child: const Text('target')
+        child: const Text('target', textDirection: TextDirection.ltr)
       )
     );
   });
 
   testWidgets('ModalBarrier prevents interactions with widgets behind it', (WidgetTester tester) async {
     final Widget subject = new Stack(
+      textDirection: TextDirection.ltr,
       children: <Widget>[
         tapTarget,
         const ModalBarrier(dismissible: false),
@@ -44,6 +46,7 @@ void main() {
 
   testWidgets('ModalBarrier does not prevent interactions with widgets in front of it', (WidgetTester tester) async {
     final Widget subject = new Stack(
+      textDirection: TextDirection.ltr,
       children: <Widget>[
         const ModalBarrier(dismissible: false),
         tapTarget,
@@ -92,7 +95,9 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets('Dismissible ModalBarrier includes button in semantic tree', (WidgetTester tester) async {
+  testWidgets('Dismissible ModalBarrier includes button in semantic tree on iOS', (WidgetTester tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+
     final SemanticsTester semantics = new SemanticsTester(tester);
     await tester.pumpWidget(const ModalBarrier(dismissible: true));
 
@@ -111,6 +116,17 @@ void main() {
         ),
       ]
     );
+    expect(semantics, hasSemantics(expectedSemantics));
+
+    semantics.dispose();
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('Dismissible ModalBarrier is hidden on Android (back button is used to dismiss)', (WidgetTester tester) async {
+    final SemanticsTester semantics = new SemanticsTester(tester);
+    await tester.pumpWidget(const ModalBarrier(dismissible: true));
+
+    final TestSemantics expectedSemantics = new TestSemantics.root();
     expect(semantics, hasSemantics(expectedSemantics));
 
     semantics.dispose();

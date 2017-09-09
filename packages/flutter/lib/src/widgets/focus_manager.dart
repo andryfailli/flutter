@@ -23,6 +23,16 @@ import 'package:flutter/foundation.dart';
 /// method to reparent your [FocusNode] if your widget moves from one
 /// location in the tree to another.
 ///
+/// ## Lifetime
+///
+/// Focus nodes are long-lived objects. For example, if a stateful widget has a
+/// focusable child widget, it should create a [FocusNode] in the
+/// [State.initState] method, and [dispose] it in the [State.dispose] method,
+/// providing the same [FocusNode] to the focusable child each time the
+/// [State.build] method is run. In particular, creating a [FocusNode] each time
+/// [State.build] is invoked will cause the focus to be lost each time the
+/// widget is built.
+///
 /// See also:
 ///
 ///  * [FocusScopeNode], which is an interior node in the focus tree.
@@ -119,7 +129,7 @@ class FocusNode extends ChangeNotifier {
 ///    [BuildContext].
 ///  * [FocusScope], which is a widget that associates a [FocusScopeNode] with
 ///    its location in the tree.
-class FocusScopeNode extends Object with TreeDiagnosticsMixin {
+class FocusScopeNode extends Object with DiagnosticableTreeMixin {
   FocusManager _manager;
   FocusScopeNode _parent;
 
@@ -344,29 +354,27 @@ class FocusScopeNode extends Object with TreeDiagnosticsMixin {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
     if (_focus != null)
-      description.add('focus: $_focus');
+      description.add(new DiagnosticsProperty<FocusNode>('focus', _focus));
   }
 
   @override
-  String debugDescribeChildren(String prefix) {
-    final StringBuffer buffer = new StringBuffer();
+  List<DiagnosticsNode> debugDescribeChildren() {
+    final List<DiagnosticsNode> children = <DiagnosticsNode>[];
     if (_firstChild != null) {
       FocusScopeNode child = _firstChild;
       int count = 1;
-      while (child != _lastChild) {
-        buffer.write(child.toStringDeep("$prefix \u251C\u2500child $count: ", "$prefix \u2502"));
-        count += 1;
+      while (true) {
+        children.add(child.toDiagnosticsNode(name: "child $count"));
+        if (child == _lastChild)
+          break;
         child = child._nextSibling;
-      }
-      if (child != null) {
-        assert(child == _lastChild);
-        buffer.write(child.toStringDeep("$prefix \u2514\u2500child $count: ", "$prefix  "));
+        count += 1;
       }
     }
-    return buffer.toString();
+    return children;
   }
 }
 

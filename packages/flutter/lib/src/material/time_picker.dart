@@ -13,7 +13,9 @@ import 'button.dart';
 import 'button_bar.dart';
 import 'colors.dart';
 import 'dialog.dart';
+import 'feedback.dart';
 import 'flat_button.dart';
+import 'material_localizations.dart';
 import 'theme.dart';
 import 'typography.dart';
 
@@ -289,7 +291,7 @@ class _TimePickerHeader extends StatelessWidget {
     );
 
     final Widget dayPeriodPicker = new GestureDetector(
-      onTap: _handleChangeDayPeriod,
+      onTap: Feedback.wrapForTap(_handleChangeDayPeriod, context),
       behavior: HitTestBehavior.opaque,
       child: new Column(
         mainAxisSize: MainAxisSize.min,
@@ -302,12 +304,12 @@ class _TimePickerHeader extends StatelessWidget {
     );
 
     final Widget hour = new GestureDetector(
-      onTap: () => _handleChangeMode(_TimePickerMode.hour),
+      onTap: Feedback.wrapForTap(() => _handleChangeMode(_TimePickerMode.hour), context),
       child: new Text(selectedTime.hourOfPeriodLabel, style: hourStyle),
     );
 
     final Widget minute = new GestureDetector(
-      onTap: () => _handleChangeMode(_TimePickerMode.minute),
+      onTap: Feedback.wrapForTap(() => _handleChangeMode(_TimePickerMode.minute), context),
       child: new Text(selectedTime.minuteLabel, style: minuteStyle),
     );
 
@@ -355,7 +357,8 @@ List<TextPainter> _initPainters(TextTheme textTheme, List<String> labels) {
     // TODO(abarth): Handle textScaleFactor.
     // https://github.com/flutter/flutter/issues/5939
     painters[i] = new TextPainter(
-      text: new TextSpan(style: style, text: label)
+      text: new TextSpan(style: style, text: label),
+      textDirection: TextDirection.ltr,
     )..layout();
   }
   return painters;
@@ -428,7 +431,7 @@ class _DialPainter extends CustomPainter {
       center: focusedPoint, radius: focusedRadius
     );
     canvas
-      ..saveLayer(focusedRect, new Paint())
+      ..save()
       ..clipPath(new Path()..addOval(focusedRect));
     paintLabels(secondaryLabels);
     canvas.restore();
@@ -695,15 +698,16 @@ class _TimePickerDialogState extends State<_TimePickerDialog> {
       )
     );
 
+    final MaterialLocalizations localizations = MaterialLocalizations.of(context);
     final Widget actions = new ButtonTheme.bar(
       child: new ButtonBar(
         children: <Widget>[
           new FlatButton(
-            child: const Text('CANCEL'),
+            child: new Text(localizations.cancelButtonLabel),
             onPressed: _handleCancel
           ),
           new FlatButton(
-            child: const Text('OK'),
+            child: new Text(localizations.okButtonLabel),
             onPressed: _handleOk
           ),
         ]

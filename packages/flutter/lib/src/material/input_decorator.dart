@@ -12,7 +12,16 @@ import 'theme.dart';
 const Duration _kTransitionDuration = const Duration(milliseconds: 200);
 const Curve _kTransitionCurve = Curves.fastOutSlowIn;
 
+// See the InputDecorator.build method, where this is used.
+class _InputDecoratorChildGlobalKey extends GlobalObjectKey {
+  const _InputDecoratorChildGlobalKey(BuildContext value) : super(value);
+}
+
 /// Text and styles used to label an input field.
+///
+/// The [TextField] and [InputDecorator] classes use [InputDecoration] objects
+/// to describe their decoration. (In fact, this class is merely the
+/// configuration of an [InputDecorator], which does all the heavy lifting.)
 ///
 /// See also:
 ///
@@ -20,6 +29,8 @@ const Curve _kTransitionCurve = Curves.fastOutSlowIn;
 ///    [InputDecoration].
 ///  * [InputDecorator], which is a widget that draws an [InputDecoration]
 ///    around an arbitrary child widget.
+///  * [Decoration] and [DecoratedBox], for drawing arbitrary decorations
+///    around other widgets.
 @immutable
 class InputDecoration {
   /// Creates a bundle of text and styles used to label an input field.
@@ -302,15 +313,22 @@ class InputDecoration {
 /// Use [InputDecorator] to create widgets that look and behave like a
 /// [TextField] but can be used to input information other than text.
 ///
+/// The configuration of this widget is primarily provided in the form of an
+/// [InputDecoration] object.
+///
 /// Requires one of its ancestors to be a [Material] widget.
 ///
 /// See also:
 ///
-/// * [TextField], which uses an [InputDecorator] to draw labels and other
+///  * [TextField], which uses an [InputDecorator] to draw labels and other
 ///    visual elements around a text entry widget.
+///  * [Decoration] and [DecoratedBox], for drawing arbitrary decorations
+///    around other widgets.
 class InputDecorator extends StatelessWidget {
   /// Creates a widget that displayes labels and other visual elements similar
   /// to a [TextField].
+  ///
+  /// The [isFocused] and [isEmpty] arguments must not be null.
   const InputDecorator({
     Key key,
     @required this.decoration,
@@ -319,7 +337,9 @@ class InputDecorator extends StatelessWidget {
     this.isFocused: false,
     this.isEmpty: false,
     this.child,
-  }) : super(key: key);
+  }) : assert(isFocused != null),
+       assert(isEmpty != null),
+       super(key: key);
 
   /// The text and styles to use when decorating the child.
   final InputDecoration decoration;
@@ -352,12 +372,12 @@ class InputDecorator extends StatelessWidget {
   final Widget child;
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('decoration: $decoration');
-    description.add('baseStyle: $baseStyle');
-    description.add('isFocused: $isFocused');
-    description.add('isEmpty: $isEmpty');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<InputDecoration>('decoration', decoration));
+    description.add(new EnumProperty<TextStyle>('baseStyle', baseStyle));
+    description.add(new DiagnosticsProperty<bool>('isFocused', isFocused));
+    description.add(new DiagnosticsProperty<bool>('isEmpty', isEmpty));
   }
 
   Color _getActiveColor(ThemeData themeData) {
@@ -482,7 +502,19 @@ class InputDecorator extends StatelessWidget {
       );
     }
 
-    Widget inputChild;
+    Widget inputChild = new KeyedSubtree(
+      // It's important that we maintain the state of our child subtree, as it
+      // may be stateful (e.g. containing text selections). Since our build
+      // function risks changing the depth of the tree, we preserve the subtree
+      // using global keys.
+      // GlobalObjectKey(context) will always be the same whenever we are built.
+      // Additionally, we use a subclass of GlobalObjectKey to avoid clashes
+      // with anyone else using our BuildContext as their global object key
+      // value.
+      key: new _InputDecoratorChildGlobalKey(context),
+      child: child,
+    );
+
     if (!hasInlineLabel && (!isEmpty || hintText == null) &&
         (decoration?.prefixText != null || decoration?.suffixText != null)) {
       final List<Widget> rowContents = <Widget>[];
@@ -492,7 +524,7 @@ class InputDecorator extends StatelessWidget {
             style: decoration.prefixStyle ?? hintStyle)
         );
       }
-      rowContents.add(new Expanded(child: child));
+      rowContents.add(new Expanded(child: inputChild));
       if (decoration.suffixText != null) {
         rowContents.add(
             new Text(decoration.suffixText,
@@ -500,8 +532,6 @@ class InputDecorator extends StatelessWidget {
         );
       }
       inputChild = new Row(children: rowContents);
-    } else {
-      inputChild = child;
     }
 
     if (isCollapsed) {
@@ -585,9 +615,9 @@ class _AnimatedLabel extends ImplicitlyAnimatedWidget {
   _AnimatedLabelState createState() => new _AnimatedLabelState();
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    '$style'.split('\n').forEach(description.add);
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    style?.debugFillProperties(description);
   }
 }
 

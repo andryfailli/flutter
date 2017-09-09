@@ -1,5 +1,5 @@
 name: flutter_driver
-version: 0.0.9
+version: 0.0.13-dev
 description: Integration and performance test API for Flutter applications
 homepage: http://flutter.io
 author: Flutter Authors <flutter-dev@googlegroups.com>
@@ -8,7 +8,7 @@ environment:
   sdk: '>=1.19.0 <2.0.0'
 
 dependencies:
-  file: 2.3.2
+  file: 2.3.4
   json_rpc_2: '^2.0.0'
   matcher: '>=0.12.0 <1.0.0'
   meta: ^1.0.5
@@ -21,6 +21,6 @@ dependencies:
     sdk: flutter
 
 dev_dependencies:
-  test: 0.12.21
+  test: any # pinned by flutter_test
   mockito: ^2.0.2
   quiver: ^0.24.0

@@ -68,7 +68,7 @@ Future<Null> main(List<String> args) async {
     new AnalyzeCommand(verboseHelp: verboseHelp),
     new BuildCommand(verboseHelp: verboseHelp),
     new ChannelCommand(),
-    new ConfigCommand(),
+    new ConfigCommand(verboseHelp: verboseHelp),
     new CreateCommand(),
     new DaemonCommand(hidden: !verboseHelp),
     new DevicesCommand(),
@@ -118,6 +118,7 @@ Future<int> run(List<String> args, List<FlutterCommand> subCommands, {
     // in those locations as well to see if you need a similar update there.
 
     // Seed these context entries first since others depend on them
+    context.putIfAbsent(Stdio, () => const Stdio());
     context.putIfAbsent(Platform, () => const LocalPlatform());
     context.putIfAbsent(FileSystem, () => const LocalFileSystem());
     context.putIfAbsent(ProcessManager, () => const LocalProcessManager());

@@ -84,8 +84,8 @@ class DecoratedBox extends SingleChildRenderObjectWidget {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
     String label;
     if (position != null) {
       switch (position) {
@@ -97,10 +97,15 @@ class DecoratedBox extends SingleChildRenderObjectWidget {
           break;
       }
     } else {
-      description.add('position: NULL');
       label = 'decoration';
     }
-    description.add(decoration != null ? '$label: $decoration' : 'no decoration');
+    description.add(new EnumProperty<DecorationPosition>('position', position, hidden: position != null));
+    description.add(new DiagnosticsProperty<Decoration>(
+      label,
+      decoration,
+      ifNull: 'no decoration',
+      showName: decoration != null,
+    ));
   }
 }
 
@@ -273,11 +278,11 @@ class Container extends StatelessWidget {
   /// constraints are unbounded, then the child will be shrink-wrapped instead.
   ///
   /// Ignored if [child] is null.
-  final FractionalOffset alignment;
+  final FractionalOffsetGeometry alignment;
 
   /// Empty space to inscribe inside the [decoration]. The [child], if any, is
   /// placed inside this padding.
-  final EdgeInsets padding;
+  final EdgeInsetsGeometry padding;
 
   /// The decoration to paint behind the [child].
   ///
@@ -298,18 +303,18 @@ class Container extends StatelessWidget {
   final BoxConstraints constraints;
 
   /// Empty space to surround the [decoration] and [child].
-  final EdgeInsets margin;
+  final EdgeInsetsGeometry margin;
 
   /// The transformation matrix to apply before painting the container.
   final Matrix4 transform;
 
-  EdgeInsets get _paddingIncludingDecoration {
+  EdgeInsetsGeometry get _paddingIncludingDecoration {
     if (decoration == null || decoration.padding == null)
       return padding;
-    final EdgeInsets decorationPadding = decoration.padding;
+    final EdgeInsetsGeometry decorationPadding = decoration.padding;
     if (padding == null)
       return decorationPadding;
-    return padding + decorationPadding;
+    return padding.add(decorationPadding);
   }
 
   @override
@@ -327,7 +332,7 @@ class Container extends StatelessWidget {
     if (alignment != null)
       current = new Align(alignment: alignment, child: current);
 
-    final EdgeInsets effectivePadding = _paddingIncludingDecoration;
+    final EdgeInsetsGeometry effectivePadding = _paddingIncludingDecoration;
     if (effectivePadding != null)
       current = new Padding(padding: effectivePadding, child: current);
 
@@ -355,21 +360,14 @@ class Container extends StatelessWidget {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    if (alignment != null)
-      description.add('$alignment');
-    if (padding != null)
-      description.add('padding: $padding');
-    if (decoration != null)
-      description.add('bg: $decoration');
-    if (foregroundDecoration != null)
-      description.add('fg: $foregroundDecoration');
-    if (constraints != null)
-      description.add('$constraints');
-    if (margin != null)
-      description.add('margin: $margin');
-    if (transform != null)
-      description.add('has transform');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<FractionalOffsetGeometry>('alignment', alignment, showName: false, defaultValue: null));
+    description.add(new DiagnosticsProperty<EdgeInsetsGeometry>('padding', padding, defaultValue: null));
+    description.add(new DiagnosticsProperty<Decoration>('bg', decoration, defaultValue: null));
+    description.add(new DiagnosticsProperty<Decoration>('fg', foregroundDecoration, defaultValue: null));
+    description.add(new DiagnosticsProperty<BoxConstraints>('constraints', constraints, defaultValue: null));
+    description.add(new DiagnosticsProperty<EdgeInsetsGeometry>('margin', margin, defaultValue: null));
+    description.add(new ObjectFlagProperty<Matrix4>.has('transform', transform));
   }
 }

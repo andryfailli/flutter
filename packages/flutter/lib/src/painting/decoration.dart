@@ -25,10 +25,13 @@ export 'edge_insets.dart' show EdgeInsets;
 /// shared between boxes; [BoxPainter] objects can cache resources to
 /// make painting on a particular surface faster.
 @immutable
-abstract class Decoration {
+abstract class Decoration extends Diagnosticable {
   /// Abstract const constructor. This constructor enables subclasses to provide
   /// const constructors so that they can be used in const expressions.
   const Decoration();
+
+  @override
+  String toStringShort() => '$runtimeType';
 
   /// In checked mode, throws an exception if the object is not in a
   /// valid configuration. Otherwise, returns true.
@@ -80,17 +83,6 @@ abstract class Decoration {
   /// omitted if there is no chance that the painter will change (for example,
   /// if it is a [BoxDecoration] with definitely no [DecorationImage]).
   BoxPainter createBoxPainter([VoidCallback onChanged]);
-
-  /// Returns a string representation of this object.
-  ///
-  /// Every line of the output should be prefixed by `prefix`.
-  ///
-  /// If `indentPrefix` is non-null, then the description can be further split
-  /// into sublines, and each subline should be prefixed with `indentPrefix`
-  /// (rather that `prefix`). This is used, for example, by [BoxDecoration] for
-  /// the otherwise quite verbose [BoxShadow] descriptions.
-  @override
-  String toString([String prefix = '', String indentPrefix ]) => '$prefix$runtimeType';
 }
 
 /// A stateful class that can paint a particular [Decoration].

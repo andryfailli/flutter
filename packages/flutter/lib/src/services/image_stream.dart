@@ -70,7 +70,7 @@ typedef void ImageListener(ImageInfo image, bool synchronousCall);
 ///
 ///  * [ImageProvider], which has an example that includes the use of an
 ///    [ImageStream] in a [Widget].
-class ImageStream {
+class ImageStream extends Diagnosticable {
   /// Create an initially unbound image stream.
   ///
   /// Once an [ImageStreamCompleter] is available, call [setCompleter].
@@ -88,6 +88,10 @@ class ImageStream {
   ///
   /// This is usually done automatically by the [ImageProvider] that created the
   /// [ImageStream].
+  ///
+  /// This method can only be called once per stream. To have an [ImageStream]
+  /// represent multiple images over time, assign it a completer that
+  /// completes several images in succession.
   void setCompleter(ImageStreamCompleter value) {
     assert(_completer == null);
     _completer = value;
@@ -98,9 +102,17 @@ class ImageStream {
     }
   }
 
-  /// Adds a listener callback that is called whenever a concrete [ImageInfo]
+  /// Adds a listener callback that is called whenever a new concrete [ImageInfo]
   /// object is available. If a concrete image is already available, this object
   /// will call the listener synchronously.
+  ///
+  /// If the assigned [completer] completes multiple images over its lifetime,
+  /// this listener will fire multiple times.
+  ///
+  /// The listener will be passed a flag indicating whether a synchronous call
+  /// occurred. If the listener is added within a render object paint function,
+  /// then use this flag to avoid calling [RenderObject.markNeedsPaint] during
+  /// a paint.
   void addListener(ImageListener listener) {
     if (_completer != null)
       return _completer.addListener(listener);
@@ -130,24 +142,25 @@ class ImageStream {
   Object get key => _completer != null ? _completer : this;
 
   @override
-  String toString() {
-    final StringBuffer result = new StringBuffer();
-    result.write('$runtimeType(');
-    if (_completer == null) {
-      result.write('unresolved; ');
-      if (_listeners != null) {
-        result.write('${_listeners.length} listener${_listeners.length == 1 ? "" : "s" }');
-      } else {
-        result.write('no listeners');
-      }
-    } else {
-      result.write('${_completer.runtimeType}; ');
-      final List<String> description = <String>[];
-      _completer.debugFillDescription(description);
-      result.write(description.join('; '));
-    }
-    result.write(')');
-    return result.toString();
+  String toStringShort() => '$runtimeType';
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new ObjectFlagProperty<ImageStreamCompleter>(
+      'completer',
+      _completer,
+      ifPresent: _completer?.toStringShort(),
+      ifNull: 'unresolved',
+    ));
+    properties.add(new ObjectFlagProperty<List<ImageListener>>(
+      'listeners',
+      _listeners,
+      ifPresent: '${_listeners?.length} listener${_listeners?.length == 1 ? "" : "s" }',
+      ifNull: 'no listeners',
+      hidden: _completer != null,
+    ));
+    _completer?.debugFillProperties(properties);
   }
 }
 
@@ -157,17 +170,21 @@ class ImageStream {
 /// This class is rarely used directly. Generally, an [ImageProvider] subclass
 /// will return an [ImageStream] and automatically configure it with the right
 /// [ImageStreamCompleter] when possible.
-class ImageStreamCompleter {
+class ImageStreamCompleter extends Diagnosticable {
   final List<ImageListener> _listeners = <ImageListener>[];
   ImageInfo _current;
 
-  /// Adds a listener callback that is called whenever a concrete [ImageInfo]
+  /// Adds a listener callback that is called whenever a new concrete [ImageInfo]
   /// object is available. If a concrete image is already available, this object
   /// will call the listener synchronously.
   ///
+  /// If the [ImageStreamCompleter] completes multiple images over its lifetime,
+  /// this listener will fire multiple times.
+  ///
   /// The listener will be passed a flag indicating whether a synchronous call
   /// occurred. If the listener is added within a render object paint function,
-  /// then use this flag to avoid calling markNeedsPaint during a paint.
+  /// then use this flag to avoid calling [RenderObject.markNeedsPaint] during
+  /// a paint.
   void addListener(ImageListener listener) {
     _listeners.add(listener);
     if (_current != null) {
@@ -210,22 +227,19 @@ class ImageStreamCompleter {
   }
 
   @override
-  String toString() {
-    final List<String> description = <String>[];
-    debugFillDescription(description);
-    return '$runtimeType(${description.join("; ")})';
-  }
+  String toStringShort() => '$runtimeType';
 
   /// Accumulates a list of strings describing the object's state. Subclasses
   /// should override this to have their information included in [toString].
-  @protected
-  @mustCallSuper
-  void debugFillDescription(List<String> description) {
-    if (_current == null)
-      description.add('unresolved');
-    else
-      description.add('$_current');
-    description.add('${_listeners.length} listener${_listeners.length == 1 ? "" : "s" }');
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<ImageInfo>('current', _current, ifNull: 'unresolved', showName: false));
+    description.add(new ObjectFlagProperty<List<ImageListener>>(
+      'listeners',
+      _listeners,
+      ifPresent: '${_listeners?.length} listener${_listeners?.length == 1 ? "" : "s" }',
+    ));
   }
 }
 
@@ -254,7 +268,8 @@ class OneFrameImageStreamCompleter extends ImageStreamCompleter {
         stack: stack,
         library: 'services',
         context: 'resolving a single-frame image stream',
-        informationCollector: informationCollector
+        informationCollector: informationCollector,
+        silent: true,
       ));
     });
   }

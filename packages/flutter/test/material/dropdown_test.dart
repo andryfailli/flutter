@@ -8,6 +8,8 @@ import 'dart:ui' show window;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
 
+import '../widgets/semantics_tester.dart';
+
 const List<String> menuItems = const <String>['one', 'two', 'three', 'four'];
 
 final Type dropdownButtonType = new DropdownButton<String>(
@@ -113,18 +115,21 @@ void main() {
     }
 
     Widget build() {
-      return new Navigator(
-        initialRoute: '/',
-        onGenerateRoute: (RouteSettings settings) {
-          return new MaterialPageRoute<Null>(
-            settings: settings,
-            builder: (BuildContext context) {
-              return new Material(
-                child: buildFrame(value: 'one', onChanged: didChangeValue),
-              );
-            },
-          );
-        }
+      return new Directionality(
+        textDirection: TextDirection.ltr,
+        child: new Navigator(
+          initialRoute: '/',
+          onGenerateRoute: (RouteSettings settings) {
+            return new MaterialPageRoute<Null>(
+              settings: settings,
+              builder: (BuildContext context) {
+                return new Material(
+                  child: buildFrame(value: 'one', onChanged: didChangeValue),
+                );
+              },
+            );
+          },
+        ),
       );
     }
 
@@ -476,4 +481,16 @@ void main() {
     expect(find.byType(ListView, skipOffstage: false), findsNothing);
   });
 
+
+  testWidgets('Semantics Tree contains only selected element', (WidgetTester tester) async {
+    final SemanticsTester semantics = new SemanticsTester(tester);
+    await tester.pumpWidget(buildFrame(items: menuItems));
+
+    expect(semantics, isNot(includesNodeWith(label: menuItems[0])));
+    expect(semantics, includesNodeWith(label: menuItems[1]));
+    expect(semantics, isNot(includesNodeWith(label: menuItems[2])));
+    expect(semantics, isNot(includesNodeWith(label: menuItems[3])));
+
+    semantics.dispose();
+  });
 }

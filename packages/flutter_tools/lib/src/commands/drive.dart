@@ -8,7 +8,6 @@ import '../application_package.dart';
 import '../base/common.dart';
 import '../base/file_system.dart';
 import '../base/process.dart';
-import '../build_info.dart';
 import '../cache.dart';
 import '../dart/package_map.dart';
 import '../dart/sdk.dart';
@@ -28,7 +27,7 @@ import 'run.dart';
 /// as the `--target` option (defaults to `lib/main.dart`). It then looks for a
 /// corresponding test file within the `test_driver` directory. The test file is
 /// expected to have the same name but contain the `_test.dart` suffix. The
-/// `_test.dart` file would generall be a Dart program that uses
+/// `_test.dart` file would generally be a Dart program that uses
 /// `package:flutter_driver` and exercises your application. Most commonly it
 /// is a test written using `package:test`, but you are free to use something
 /// else.
@@ -41,20 +40,36 @@ class DriveCommand extends RunCommandBase {
   DriveCommand() {
     argParser.addFlag(
       'keep-app-running',
+      defaultsTo: null,
       negatable: true,
-      defaultsTo: false,
       help:
         'Will keep the Flutter application running when done testing.\n'
-        'By default, Flutter drive stops the application after tests are finished.\n'
-        'Ignored if --use-existing-app is specified.'
+        'By default, "flutter drive" stops the application after tests are finished,\n'
+        'and --keep-app-running overrides this. On the other hand, if --use-existing-app\n'
+        'is specified, then "flutter drive" instead defaults to leaving the application\n'
+        'running, and --no-keep-app-running overrides it.'
     );
 
     argParser.addOption(
       'use-existing-app',
       help:
         'Connect to an already running instance via the given observatory URL.\n'
-        'If this option is given, the application will not be automatically started\n'
-        'or stopped.'
+        'If this option is given, the application will not be automatically started,\n'
+        'and it will only be stopped if --no-keep-app-running is explicitly set.',
+      valueHelp:
+        'url'
+    );
+
+    argParser.addOption(
+      'driver',
+      help:
+        'The test file to run on the host (as opposed to the target file to run on\n'
+        'the device). By default, this file has the same base name as the target\n'
+        'file, but in the "test_driver/" directory instead, and with "_test" inserted\n'
+        'just before the extension, so e.g. if the target is "lib/main.dart", the\n'
+        'driver will be "test_driver/main_test.dart".',
+      valueHelp:
+        'path'
     );
   }
 
@@ -95,9 +110,9 @@ class DriveCommand extends RunCommandBase {
 
     String observatoryUri;
     if (argResults['use-existing-app'] == null) {
-      printStatus('Starting application: ${argResults["target"]}');
+      printStatus('Starting application: $targetFile');
 
-      if (getBuildMode() == BuildMode.release) {
+      if (getBuildInfo().isRelease) {
         // This is because we need VM service to be able to drive the app.
         throwToolExit(
           'Flutter Driver does not support running in release mode.\n'
@@ -125,19 +140,24 @@ class DriveCommand extends RunCommandBase {
         rethrow;
       throwToolExit('CAUGHT EXCEPTION: $error\n$stackTrace');
     } finally {
-      if (!argResults['keep-app-running'] && argResults['use-existing-app'] == null) {
+      if (argResults['keep-app-running'] ?? (argResults['use-existing-app'] != null)) {
+        printStatus('Leaving the application running.');
+      } else {
         printStatus('Stopping application instance.');
         await appStopper(this);
-      } else {
-        printStatus('Leaving the application running.');
       }
     }
   }
 
   String _getTestFile() {
+    if (argResults['driver'] != null)
+      return argResults['driver'];
+
+    // If the --driver argument wasn't provided, then derive the value from
+    // the target file.
     String appFile = fs.path.normalize(targetFile);
 
-    // This command extends `flutter start` and therefore CWD == package dir
+    // This command extends `flutter run` and therefore CWD == package dir
     final String packageDir = fs.currentDirectory.path;
 
     // Make appFile path relative to package directory because we are looking
@@ -209,7 +229,7 @@ Future<Device> findTargetDevice() async {
 /// Starts the application on the device given command configuration.
 typedef Future<LaunchResult> AppStarter(DriveCommand command);
 
-AppStarter appStarter = _startApp;
+AppStarter appStarter = _startApp; // (mutable for testing)
 void restoreAppStarter() {
   appStarter = _startApp;
 }
@@ -225,11 +245,11 @@ Future<LaunchResult> _startApp(DriveCommand command) async {
   await appStopper(command);
 
   printTrace('Installing application package.');
-  final ApplicationPackage package = command.applicationPackages
+  final ApplicationPackage package = await command.applicationPackages
       .getPackageForPlatform(await command.device.targetPlatform);
   if (await command.device.isAppInstalled(package))
-    command.device.uninstallApp(package);
-  command.device.installApp(package);
+    await command.device.uninstallApp(package);
+  await command.device.installApp(package);
 
   final Map<String, dynamic> platformArgs = <String, dynamic>{};
   if (command.traceStartup)
@@ -246,16 +266,16 @@ Future<LaunchResult> _startApp(DriveCommand command) async {
 
   final LaunchResult result = await command.device.startApp(
     package,
-    command.getBuildMode(),
     mainPath: mainPath,
     route: command.route,
     debuggingOptions: new DebuggingOptions.enabled(
-      command.getBuildMode(),
+      command.getBuildInfo(),
       startPaused: true,
       observatoryPort: command.observatoryPort,
       diagnosticPort: command.diagnosticPort,
     ),
-    platformArgs: platformArgs
+    platformArgs: platformArgs,
+    usesTerminalUi: false,
   );
 
   if (!result.started) {
@@ -299,7 +319,7 @@ void restoreAppStopper() {
 
 Future<bool> _stopApp(DriveCommand command) async {
   printTrace('Stopping application.');
-  final ApplicationPackage package = command.applicationPackages.getPackageForPlatform(await command.device.targetPlatform);
+  final ApplicationPackage package = await command.applicationPackages.getPackageForPlatform(await command.device.targetPlatform);
   final bool stopped = await command.device.stopApp(package);
   await command._deviceLogSubscription?.cancel();
   return stopped;

@@ -7,8 +7,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-import 'package:meta/meta.dart';
 
+import 'automatic_keep_alive.dart';
 import 'basic.dart';
 import 'focus_manager.dart';
 import 'focus_scope.dart';
@@ -21,7 +21,15 @@ import 'text_selection.dart';
 
 export 'package:flutter/services.dart' show TextEditingValue, TextSelection, TextInputType;
 
+/// Signature for the callback that reports when the user changes the selection
+/// (including the cursor location).
+typedef void SelectionChangedCallback(TextSelection selection, bool longPress);
+
 const Duration _kCursorBlinkHalfPeriod = const Duration(milliseconds: 500);
+
+// Number of cursor ticks during which the most recently entered character
+// is shown in an obscured text field.
+const int _kObscureShowLatestCharCursorTicks = 3;
 
 /// A controller for an editable text field.
 ///
@@ -66,7 +74,9 @@ class TextEditingController extends ValueNotifier<TextEditingValue> {
   /// this value should only be set between frames, e.g. in response to user
   /// actions, not during the build, layout, or paint phases.
   set text(String newText) {
-    value = value.copyWith(text: newText, composing: TextRange.empty);
+    value = value.copyWith(text: newText,
+                           selection: const TextSelection.collapsed(offset: -1),
+                           composing: TextRange.empty);
   }
 
   /// The currently selected [text].
@@ -79,6 +89,8 @@ class TextEditingController extends ValueNotifier<TextEditingValue> {
   /// this value should only be set between frames, e.g. in response to user
   /// actions, not during the build, layout, or paint phases.
   set selection(TextSelection newSelection) {
+    if (newSelection.start > text.length || newSelection.end > text.length)
+      throw new FlutterError('invalid text selection: $newSelection');
     value = value.copyWith(selection: newSelection, composing: TextRange.empty);
   }
 
@@ -132,16 +144,18 @@ class EditableText extends StatefulWidget {
   /// the number of lines. By default, it is 1, meaning this is a single-line
   /// text field. If it is not null, it must be greater than zero.
   ///
-  /// The [controller], [focusNode], [style], and [cursorColor] arguments must
-  /// not be null.
+  /// The [controller], [focusNode], [style], [cursorColor], and [textAlign]
+  /// arguments must not be null.
   EditableText({
     Key key,
     @required this.controller,
     @required this.focusNode,
     this.obscureText: false,
+    this.autocorrect: true,
     @required this.style,
     @required this.cursorColor,
-    this.textAlign,
+    this.textAlign: TextAlign.start,
+    this.textDirection,
     this.textScaleFactor,
     this.maxLines: 1,
     this.autofocus: false,
@@ -150,12 +164,15 @@ class EditableText extends StatefulWidget {
     this.keyboardType,
     this.onChanged,
     this.onSubmitted,
+    this.onSelectionChanged,
     List<TextInputFormatter> inputFormatters,
   }) : assert(controller != null),
        assert(focusNode != null),
        assert(obscureText != null),
+       assert(autocorrect != null),
        assert(style != null),
        assert(cursorColor != null),
+       assert(textAlign != null),
        assert(maxLines == null || maxLines > 0),
        assert(autofocus != null),
        inputFormatters = maxLines == 1
@@ -177,11 +194,33 @@ class EditableText extends StatefulWidget {
   /// Defaults to false.
   final bool obscureText;
 
+  /// Whether to enable autocorrection.
+  ///
+  /// Defaults to true.
+  final bool autocorrect;
+
   /// The text style to use for the editable text.
   final TextStyle style;
 
   /// How the text should be aligned horizontally.
+  ///
+  /// Defaults to [TextAlign.start].
   final TextAlign textAlign;
+
+  /// The directionality of the text.
+  ///
+  /// This decides how [textAlign] values like [TextAlign.start] and
+  /// [TextAlign.end] are interpreted.
+  ///
+  /// This is also used to disambiguate how to render bidirectional text. For
+  /// example, if the text is an English phrase followed by a Hebrew phrase,
+  /// in a [TextDirection.ltr] context the English phrase will be on the left
+  /// and the Hebrew phrase to its right, while in a [TextDirection.rtl]
+  /// context, the English phrase will be on the right and the Hebrow phrase on
+  /// its left.
+  ///
+  /// Defaults to the ambient [Directionality], if any.
+  final TextDirection textDirection;
 
   /// The number of font pixels for each logical pixel.
   ///
@@ -226,6 +265,10 @@ class EditableText extends StatefulWidget {
   /// Called when the user indicates that they are done editing the text in the field.
   final ValueChanged<String> onSubmitted;
 
+  /// Called when the user changes the selection of text (including the cursor
+  /// location).
+  final SelectionChangedCallback onSelectionChanged;
+
   /// Optional input validation and formatting overrides. Formatters are run
   /// in the provided order when the text input changes.
   final List<TextInputFormatter> inputFormatters;
@@ -234,28 +277,24 @@ class EditableText extends StatefulWidget {
   EditableTextState createState() => new EditableTextState();
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('controller: $controller');
-    description.add('focusNode: $focusNode');
-    if (obscureText != false)
-      description.add('obscureText: $obscureText');
-    description.add('$style');
-    if (textAlign != null)
-      description.add('$textAlign');
-    if (textScaleFactor != null)
-      description.add('textScaleFactor: $textScaleFactor');
-    if (maxLines != 1)
-      description.add('maxLines: $maxLines');
-    if (autofocus != false)
-      description.add('autofocus: $autofocus');
-    if (keyboardType != null)
-      description.add('keyboardType: $keyboardType');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<TextEditingController>('controller', controller));
+    description.add(new DiagnosticsProperty<FocusNode>('focusNode', focusNode));
+    description.add(new DiagnosticsProperty<bool>('obscureText', obscureText, defaultValue: false));
+    description.add(new DiagnosticsProperty<bool>('autocorrect', autocorrect, defaultValue: true));
+    style?.debugFillProperties(description);
+    description.add(new EnumProperty<TextAlign>('textAlign', textAlign, defaultValue: null));
+    description.add(new EnumProperty<TextDirection>('textDirection', textDirection, defaultValue: null));
+    description.add(new DoubleProperty('textScaleFactor', textScaleFactor, defaultValue: null));
+    description.add(new IntProperty('maxLines', maxLines, defaultValue: 1));
+    description.add(new DiagnosticsProperty<bool>('autofocus', autofocus, defaultValue: false));
+    description.add(new EnumProperty<TextInputType>('keyboardType', keyboardType, defaultValue: null));
   }
 }
 
 /// State for a [EditableText].
-class EditableTextState extends State<EditableText> implements TextInputClient {
+class EditableTextState extends State<EditableText> with AutomaticKeepAliveClientMixin implements TextInputClient {
   Timer _cursorTimer;
   final ValueNotifier<bool> _showCursor = new ValueNotifier<bool>(false);
 
@@ -265,6 +304,9 @@ class EditableTextState extends State<EditableText> implements TextInputClient {
   final ScrollController _scrollController = new ScrollController();
   final LayerLink _layerLink = new LayerLink();
   bool _didAutoFocus = false;
+
+  @override
+  bool get wantKeepAlive => widget.focusNode.hasFocus;
 
   // State lifecycle:
 
@@ -296,6 +338,7 @@ class EditableTextState extends State<EditableText> implements TextInputClient {
     if (widget.focusNode != oldWidget.focusNode) {
       oldWidget.focusNode.removeListener(_handleFocusChanged);
       widget.focusNode.addListener(_handleFocusChanged);
+      updateKeepAlive();
     }
   }
 
@@ -318,8 +361,13 @@ class EditableTextState extends State<EditableText> implements TextInputClient {
 
   @override
   void updateEditingValue(TextEditingValue value) {
-    if (value.text != _value.text)
+    if (value.text != _value.text) {
       _hideSelectionOverlayIfNeeded();
+      if (widget.obscureText && value.text.length == _value.text.length + 1) {
+        _obscureShowCharTicksPending = _kObscureShowLatestCharCursorTicks;
+        _obscureLatestCharIndex = _value.selection.baseOffset;
+      }
+    }
     _lastKnownRemoteTextEditingValue = value;
     _formatAndSetValue(value);
     if (widget.onChanged != null)
@@ -371,7 +419,7 @@ class EditableTextState extends State<EditableText> implements TextInputClient {
     if (!_hasInputConnection) {
       final TextEditingValue localValue = _value;
       _lastKnownRemoteTextEditingValue = localValue;
-      _textInputConnection = TextInput.attach(this, new TextInputConfiguration(inputType: widget.keyboardType, obscureText: widget.obscureText))
+      _textInputConnection = TextInput.attach(this, new TextInputConfiguration(inputType: widget.keyboardType, obscureText: widget.obscureText, autocorrect: widget.autocorrect))
         ..setEditingState(localValue);
     }
     _textInputConnection.show();
@@ -447,6 +495,8 @@ class EditableTextState extends State<EditableText> implements TextInputClient {
         _selectionOverlay.showHandles();
       if (longPress)
         _selectionOverlay.showToolbar();
+      if (widget.onSelectionChanged != null)
+        widget.onSelectionChanged(selection, longPress);
     }
   }
 
@@ -495,8 +545,14 @@ class EditableTextState extends State<EditableText> implements TextInputClient {
   @visibleForTesting
   Duration get cursorBlinkInterval => _kCursorBlinkHalfPeriod;
 
+  int _obscureShowCharTicksPending = 0;
+  int _obscureLatestCharIndex;
+
   void _cursorTick(Timer timer) {
     _showCursor.value = !_showCursor.value;
+    if (_obscureShowCharTicksPending > 0) {
+      setState(() { _obscureShowCharTicksPending--; });
+    }
   }
 
   void _startCursorTimer() {
@@ -508,6 +564,7 @@ class EditableTextState extends State<EditableText> implements TextInputClient {
     _cursorTimer?.cancel();
     _cursorTimer = null;
     _showCursor.value = false;
+    _obscureShowCharTicksPending = 0;
   }
 
   void _startOrStopCursorTimerIfNeeded() {
@@ -531,11 +588,23 @@ class EditableTextState extends State<EditableText> implements TextInputClient {
     _openOrCloseInputConnectionIfNeeded();
     _startOrStopCursorTimerIfNeeded();
     _updateOrDisposeSelectionOverlayIfNeeded();
+    if (!_hasFocus) {
+      // Clear the selection and composition state if this widget lost focus.
+      _value = new TextEditingValue(text: _value.text);
+    }
+    updateKeepAlive();
+  }
+
+  TextDirection get _textDirection {
+    final TextDirection result = widget.textDirection ?? Directionality.of(context);
+    assert(result != null, '$runtimeType created without a textDirection and with no ambient Directionality.');
+    return result;
   }
 
   @override
   Widget build(BuildContext context) {
     FocusScope.of(context).reparentIfNeeded(widget.focusNode);
+    super.build(context); // See AutomaticKeepAliveClientMixin.
     return new Scrollable(
       axisDirection: _isMultiline ? AxisDirection.down : AxisDirection.right,
       controller: _scrollController,
@@ -552,7 +621,10 @@ class EditableTextState extends State<EditableText> implements TextInputClient {
             selectionColor: widget.selectionColor,
             textScaleFactor: widget.textScaleFactor ?? MediaQuery.of(context, nullOk: true)?.textScaleFactor ?? 1.0,
             textAlign: widget.textAlign,
+            textDirection: _textDirection,
             obscureText: widget.obscureText,
+            obscureShowCharacterAtIndex: _obscureShowCharTicksPending > 0 ? _obscureLatestCharIndex : null,
+            autocorrect: widget.autocorrect,
             offset: offset,
             onSelectionChanged: _handleSelectionChanged,
             onCaretChanged: _handleCaretChanged,
@@ -574,11 +646,15 @@ class _Editable extends LeafRenderObjectWidget {
     this.selectionColor,
     this.textScaleFactor,
     this.textAlign,
+    @required this.textDirection,
     this.obscureText,
+    this.obscureShowCharacterAtIndex,
+    this.autocorrect,
     this.offset,
     this.onSelectionChanged,
     this.onCaretChanged,
-  }) : super(key: key);
+  }) : assert(textDirection != null),
+       super(key: key);
 
   final TextEditingValue value;
   final TextStyle style;
@@ -588,7 +664,10 @@ class _Editable extends LeafRenderObjectWidget {
   final Color selectionColor;
   final double textScaleFactor;
   final TextAlign textAlign;
+  final TextDirection textDirection;
   final bool obscureText;
+  final int obscureShowCharacterAtIndex;
+  final bool autocorrect;
   final ViewportOffset offset;
   final SelectionChangedHandler onSelectionChanged;
   final CaretChangedHandler onCaretChanged;
@@ -603,6 +682,7 @@ class _Editable extends LeafRenderObjectWidget {
       selectionColor: selectionColor,
       textScaleFactor: textScaleFactor,
       textAlign: textAlign,
+      textDirection: textDirection,
       selection: value.selection,
       offset: offset,
       onSelectionChanged: onSelectionChanged,
@@ -620,6 +700,7 @@ class _Editable extends LeafRenderObjectWidget {
       ..selectionColor = selectionColor
       ..textScaleFactor = textScaleFactor
       ..textAlign = textAlign
+      ..textDirection = textDirection
       ..selection = value.selection
       ..offset = offset
       ..onSelectionChanged = onSelectionChanged
@@ -645,8 +726,12 @@ class _Editable extends LeafRenderObjectWidget {
     }
 
     String text = value.text;
-    if (obscureText)
+    if (obscureText) {
       text = new String.fromCharCodes(new List<int>.filled(text.length, 0x2022));
+      final int o = obscureShowCharacterAtIndex;
+      if (o != null && o >= 0 && o < text.length)
+        text = text.replaceRange(o, o + 1, value.text.substring(o, o + 1));
+    }
     return new TextSpan(style: style, text: text);
   }
 }

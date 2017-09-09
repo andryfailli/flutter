@@ -8,11 +8,15 @@ import 'dart:ui' show Rect, SemanticsAction, SemanticsFlags;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
+import 'package:flutter/services.dart';
 import 'package:vector_math/vector_math_64.dart';
 
+import 'debug.dart';
 import 'node.dart';
+import 'semantics_event.dart';
 
 export 'dart:ui' show SemanticsAction;
+export 'semantics_event.dart';
 
 /// Interface for [RenderObject]s to implement when they want to support
 /// being tapped, etc.
@@ -46,6 +50,38 @@ typedef void SemanticsAnnotator(SemanticsNode semantics);
 /// Used by [SemanticsNode.visitChildren].
 typedef bool SemanticsNodeVisitor(SemanticsNode node);
 
+/// A tag for a [SemanticsNode].
+///
+/// Tags can be interpreted by the parent of a [SemanticsNode]
+/// and depending on the presence of a tag the parent can for example decide
+/// how to add the tagged note as a child. Tags are not sent to the engine.
+///
+/// As an example, the [RenderSemanticsGestureHandler] uses tags to determine
+/// if a child node should be excluded from the scrollable area for semantic
+/// purposes.
+///
+/// The provided [name] is only used for debugging. Two tags created with the
+/// same [name] and the `new` operator are not considered identical. However,
+/// two tags created with the same [name] and the `const` operator are always
+/// identical.
+class SemanticsTag {
+  /// Creates a [SemanticsTag].
+  ///
+  /// The provided [name] is only used for debugging. Two tags created with the
+  /// same [name] and the `new` operator are not considered identical. However,
+  /// two tags created with the same [name] and the `const` operator are always
+  /// identical.
+  const SemanticsTag(this.name);
+
+  /// A human-readable name for this tag used for debugging.
+  ///
+  /// This string is not used to determine if two tags are identical.
+  final String name;
+
+  @override
+  String toString() => '$runtimeType($name)';
+}
+
 /// Summary information about a [SemanticsNode] object.
 ///
 /// A semantics node might [SemanticsNode.mergeAllDescendantsIntoThisNode],
@@ -59,16 +95,22 @@ class SemanticsData {
   /// Creates a semantics data object.
   ///
   /// The [flags], [actions], [label], and [Rect] arguments must not be null.
+  ///
+  /// If [label] is not empty, then [textDirection] must also not be null.
   const SemanticsData({
     @required this.flags,
     @required this.actions,
     @required this.label,
+    @required this.textDirection,
     @required this.rect,
-    this.transform
+    @required this.tags,
+    this.transform,
   }) : assert(flags != null),
        assert(actions != null),
        assert(label != null),
-       assert(rect != null);
+       assert(label == '' || textDirection != null, 'A SemanticsData object with label "$label" had a null textDirection.'),
+       assert(rect != null),
+       assert(tags != null);
 
   /// A bit field of [SemanticsFlags] that apply to this node.
   final int flags;
@@ -77,10 +119,18 @@ class SemanticsData {
   final int actions;
 
   /// A textual description of this node.
+  ///
+  /// The text's reading direction is given by [textDirection].
   final String label;
+
+  /// The reading direction for the text in [label].
+  final TextDirection textDirection;
 
   /// The bounding box for this node in its coordinate system.
   final Rect rect;
+
+  /// The set of [SemanticsTag]s associated with this node.
+  final Set<SemanticsTag> tags;
 
   /// The transform from this node's coordinate system to its parent's coordinate system.
   ///
@@ -111,6 +161,8 @@ class SemanticsData {
     }
     if (label.isNotEmpty)
       buffer.write('; "$label"');
+    if (textDirection != null)
+      buffer.write('; $textDirection');
     buffer.write(')');
     return buffer.toString();
   }
@@ -123,12 +175,14 @@ class SemanticsData {
     return typedOther.flags == flags
         && typedOther.actions == actions
         && typedOther.label == label
+        && typedOther.textDirection == textDirection
         && typedOther.rect == rect
+        && setEquals(typedOther.tags, tags)
         && typedOther.transform == transform;
   }
 
   @override
-  int get hashCode => hashValues(flags, actions, label, rect, transform);
+  int get hashCode => hashValues(flags, actions, label, textDirection, rect, tags, transform);
 }
 
 /// A node that represents some semantic data.
@@ -143,8 +197,10 @@ class SemanticsNode extends AbstractNode {
   /// Each semantic node has a unique identifier that is assigned when the node
   /// is created.
   SemanticsNode({
-    SemanticsActionHandler handler
+    SemanticsActionHandler handler,
+    VoidCallback showOnScreen,
   }) : id = _generateNewId(),
+       _showOnScreen = showOnScreen,
        _actionHandler = handler;
 
   /// Creates a semantic node to represent the root of the semantics tree.
@@ -152,8 +208,10 @@ class SemanticsNode extends AbstractNode {
   /// The root node is assigned an identifier of zero.
   SemanticsNode.root({
     SemanticsActionHandler handler,
-    SemanticsOwner owner
+    VoidCallback showOnScreen,
+    SemanticsOwner owner,
   }) : id = 0,
+        _showOnScreen = showOnScreen,
        _actionHandler = handler {
     attach(owner);
   }
@@ -171,6 +229,7 @@ class SemanticsNode extends AbstractNode {
   final int id;
 
   final SemanticsActionHandler _actionHandler;
+  final VoidCallback _showOnScreen;
 
   // GEOMETRY
   // These are automatically handled by RenderObject's own logic
@@ -215,6 +274,7 @@ class SemanticsNode extends AbstractNode {
   /// [SemanticsActionHandler.performAction] will be called with the chosen
   /// action.
   void addAction(SemanticsAction action) {
+    assert(action != null);
     final int index = action.index;
     if ((_actions & index) == 0) {
       _actions |= index;
@@ -297,6 +357,8 @@ class SemanticsNode extends AbstractNode {
   set isSelected(bool value) => _setFlag(SemanticsFlags.isSelected, value);
 
   /// A textual description of this node.
+  ///
+  /// The text's reading direction is given by [textDirection].
   String get label => _label;
   String _label = '';
   set label(String value) {
@@ -307,6 +369,42 @@ class SemanticsNode extends AbstractNode {
     }
   }
 
+  /// The reading direction for the text in [label].
+  TextDirection get textDirection => _textDirection;
+  TextDirection _textDirection;
+  set textDirection(TextDirection value) {
+    assert(value != null);
+    if (_textDirection != value) {
+      _textDirection = value;
+      _markDirty();
+    }
+  }
+
+  final Set<SemanticsTag> _tags = new Set<SemanticsTag>();
+
+  /// Tags the [SemanticsNode] with [tag].
+  ///
+  /// Tags are not sent to the engine. They can be used by a parent
+  /// [SemanticsNode] to figure out how to add the node as a child.
+  ///
+  /// See also:
+  ///
+  ///  * [SemanticsTag], whose documentation discusses the purposes of tags.
+  ///  * [hasTag] to check if the node has a certain tag.
+  void addTag(SemanticsTag tag) {
+    assert(tag != null);
+    _tags.add(tag);
+  }
+
+  /// Check if the [SemanticsNode] is tagged with [tag].
+  ///
+  /// Tags can be added and removed with [ensureTag].
+  ///
+  /// See also:
+  ///
+  ///  * [SemanticsTag], whose documentation discusses the purposes of tags.
+  bool hasTag(SemanticsTag tag) => _tags.contains(tag);
+
   /// Restore this node to its default state.
   void reset() {
     final bool hadInheritedMergeAllDescendantsIntoThisNode = _inheritedMergeAllDescendantsIntoThisNode;
@@ -315,15 +413,22 @@ class SemanticsNode extends AbstractNode {
     if (hadInheritedMergeAllDescendantsIntoThisNode)
       _inheritedMergeAllDescendantsIntoThisNodeValue = true;
     _label = '';
+    _textDirection = null;
+    _tags.clear();
     _markDirty();
   }
 
   List<SemanticsNode> _newChildren;
 
   /// Append the given children as children of this node.
-  void addChildren(Iterable<SemanticsNode> children) {
+  ///
+  /// Children must be added in inverse hit test order (i.e. paint order).
+  ///
+  /// The [finalizeChildren] method must be called after all children have been
+  /// added.
+  void addChildren(Iterable<SemanticsNode> childrenInInverseHitTestOrder) {
     _newChildren ??= <SemanticsNode>[];
-    _newChildren.addAll(children);
+    _newChildren.addAll(childrenInInverseHitTestOrder);
     // we do the asserts afterwards because children is an Iterable
     // and doing the asserts before would mean the behavior is
     // different in checked mode vs release mode (if you walk an
@@ -345,6 +450,7 @@ class SemanticsNode extends AbstractNode {
     });
   }
 
+  /// Contains the children in inverse hit test order (i.e. paint order).
   List<SemanticsNode> _children;
 
   /// Whether this node has a non-zero number of children.
@@ -410,6 +516,17 @@ class SemanticsNode extends AbstractNode {
           assert(!child.attached);
           adoptChild(child);
           sawChange = true;
+        }
+      }
+    }
+    if (!sawChange && _children != null) {
+      assert(_newChildren != null);
+      assert(_newChildren.length == _children.length);
+      // Did the order change?
+      for (int i = 0; i < _children.length; i++) {
+        if (_children[i].id != _newChildren[i].id) {
+          sawChange = true;
+          break;
         }
       }
     }
@@ -510,16 +627,31 @@ class SemanticsNode extends AbstractNode {
     int flags = _flags;
     int actions = _actions;
     String label = _label;
+    TextDirection textDirection = _textDirection;
+    final Set<SemanticsTag> tags = new Set<SemanticsTag>.from(_tags);
 
     if (mergeAllDescendantsIntoThisNode) {
       _visitDescendants((SemanticsNode node) {
         flags |= node._flags;
         actions |= node._actions;
+        textDirection ??= node._textDirection;
+        tags.addAll(node._tags);
         if (node.label.isNotEmpty) {
+          String nestedLabel = node.label;
+          if (textDirection != node.textDirection && node.textDirection != null) {
+            switch (node.textDirection) {
+              case TextDirection.rtl:
+                nestedLabel = '${Unicode.RLE}$nestedLabel${Unicode.PDF}';
+                break;
+              case TextDirection.ltr:
+                nestedLabel = '${Unicode.LRE}$nestedLabel${Unicode.PDF}';
+                break;
+            }
+          }
           if (label.isEmpty)
-            label = node.label;
+            label = nestedLabel;
           else
-            label = '$label\n${node.label}';
+            label = '$label\n$nestedLabel';
         }
         return true;
       });
@@ -529,8 +661,10 @@ class SemanticsNode extends AbstractNode {
       flags: flags,
       actions: actions,
       label: label,
+      textDirection: textDirection,
       rect: rect,
-      transform: transform
+      transform: transform,
+      tags: tags,
     );
   }
 
@@ -559,10 +693,32 @@ class SemanticsNode extends AbstractNode {
       actions: data.actions,
       rect: data.rect,
       label: data.label,
+      textDirection: data.textDirection,
       transform: data.transform?.storage ?? _kIdentityTransform,
       children: children,
     );
     _dirty = false;
+  }
+
+  /// Sends a [SemanticsEvent] associated with this [SemanticsNode].
+  ///
+  /// Semantics events should be sent to inform interested parties (like
+  /// the accessibility system of the operating system) about changes to the UI.
+  ///
+  /// For example, if this semantics node represents a scrollable list, a
+  /// [ScrollCompletedSemanticsEvent] should be sent after a scroll action is completed.
+  /// That way, the operating system can give additional feedback to the user
+  /// about the state of the UI (e.g. on Android a ping sound is played to
+  /// indicate a successful scroll in accessibility mode).
+  void sendEvent(SemanticsEvent event) {
+    if (!attached)
+      return;
+    final Map<String, dynamic> annotatedEvent = <String, dynamic>{
+      'nodeId': id,
+      'type': event.type,
+      'data': event.toMap(),
+    };
+    SystemChannels.accessibility.send(annotatedEvent);
   }
 
   @override
@@ -593,6 +749,8 @@ class SemanticsNode extends AbstractNode {
       if ((_actions & action.index) != 0)
         buffer.write('; $action');
     }
+    for (SemanticsTag tag in _tags)
+      buffer.write('; $tag');
     if (hasCheckedState) {
       if (isChecked)
         buffer.write('; checked');
@@ -603,24 +761,53 @@ class SemanticsNode extends AbstractNode {
       buffer.write('; selected');
     if (label.isNotEmpty)
       buffer.write('; "$label"');
+    if (textDirection != null)
+      buffer.write('; $textDirection');
     buffer.write(')');
     return buffer.toString();
   }
 
   /// Returns a string representation of this node and its descendants.
-  String toStringDeep([String prefixLineOne = '', String prefixOtherLines = '']) {
+  ///
+  /// The order in which the children of the [SemanticsNode] will be printed is
+  /// controlled by the [childOrder] parameter.
+  String toStringDeep(DebugSemanticsDumpOrder childOrder, [
+    String prefixLineOne = '',
+    String prefixOtherLines = ''
+  ]) {
+    assert(childOrder != null);
     final StringBuffer result = new StringBuffer()
       ..write(prefixLineOne)
       ..write(this)
       ..write('\n');
     if (_children != null && _children.isNotEmpty) {
-      for (int index = 0; index < _children.length - 1; index += 1) {
-        final SemanticsNode child = _children[index];
-        result.write(child.toStringDeep("$prefixOtherLines \u251C", "$prefixOtherLines \u2502"));
+      final List<SemanticsNode> childrenInOrder = _getChildrenInOrder(childOrder);
+      for (int index = 0; index < childrenInOrder.length - 1; index += 1) {
+        final SemanticsNode child = childrenInOrder[index];
+        result.write(child.toStringDeep(childOrder, "$prefixOtherLines \u251C", "$prefixOtherLines \u2502"));
       }
-      result.write(_children.last.toStringDeep("$prefixOtherLines \u2514", "$prefixOtherLines  "));
+      result.write(childrenInOrder.last.toStringDeep(childOrder, "$prefixOtherLines \u2514", "$prefixOtherLines  "));
     }
     return result.toString();
+  }
+
+  Iterable<SemanticsNode> _getChildrenInOrder(DebugSemanticsDumpOrder childOrder) {
+    assert(childOrder != null);
+    switch(childOrder) {
+      case DebugSemanticsDumpOrder.traversal:
+        return new List<SemanticsNode>.from(_children)..sort(_geometryComparator);
+      case DebugSemanticsDumpOrder.inverseHitTest:
+        return _children;
+    }
+    assert(false);
+    return null;
+  }
+
+  static int _geometryComparator(SemanticsNode a, SemanticsNode b) {
+    final Rect rectA = a.transform == null ? a.rect : MatrixUtils.transformRect(a.transform, a.rect);
+    final Rect rectB = b.transform == null ? b.rect : MatrixUtils.transformRect(b.transform, b.rect);
+    final int top = rectA.top.compareTo(rectB.top);
+    return top == 0 ? rectA.left.compareTo(rectB.left) : top;
   }
 }
 
@@ -734,7 +921,14 @@ class SemanticsOwner extends ChangeNotifier {
   void performAction(int id, SemanticsAction action) {
     assert(action != null);
     final SemanticsActionHandler handler = _getSemanticsActionHandlerForId(id, action);
-    handler?.performAction(action);
+    if (handler != null) {
+      handler.performAction(action);
+      return;
+    }
+
+    // Default actions if no [handler] was provided.
+    if (action == SemanticsAction.showOnScreen && _nodes[id]._showOnScreen != null)
+      _nodes[id]._showOnScreen();
   }
 
   SemanticsActionHandler _getSemanticsActionHandlerForPosition(SemanticsNode node, Offset position, SemanticsAction action) {

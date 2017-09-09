@@ -77,12 +77,20 @@ class SingleChildScrollView extends StatelessWidget {
   final bool reverse;
 
   /// The amount of space by which to inset the child.
-  final EdgeInsets padding;
+  final EdgeInsetsGeometry padding;
 
   /// An object that can be used to control the position to which this scroll
   /// view is scrolled.
   ///
   /// Must be null if [primary] is true.
+  ///
+  /// A [ScrollController] serves several purposes. It can be used to control
+  /// the initial scroll position (see [ScrollController.initialScrollOffset]).
+  /// It can be used to control whether the scroll view should automatically
+  /// save and restore its scroll position in the [PageStorage] (see
+  /// [ScrollController.keepScrollOffset]). It can be used to read the current
+  /// scroll position (see [ScrollController.offset]), or change it (see
+  /// [ScrollController.animateTo]).
   final ScrollController controller;
 
   /// Whether this is the primary scroll view associated with the parent
@@ -91,7 +99,7 @@ class SingleChildScrollView extends StatelessWidget {
   /// On iOS, this identifies the scroll view that will scroll to top in
   /// response to a tap in the status bar.
   ///
-  /// Defaults to true when `scrollDirection` is vertical and `controller` is
+  /// Defaults to true when [scrollDirection] is vertical and [controller] is
   /// not specified.
   final bool primary;
 
@@ -107,10 +115,12 @@ class SingleChildScrollView extends StatelessWidget {
   final Widget child;
 
   AxisDirection _getDirection(BuildContext context) {
-    // TODO(abarth): Consider reading direction.
     switch (scrollDirection) {
       case Axis.horizontal:
-        return reverse ? AxisDirection.left : AxisDirection.right;
+        final TextDirection textDirection = Directionality.of(context);
+        assert(textDirection != null);
+        final AxisDirection axisDirection = textDirectionToAxisDirection(textDirection);
+        return reverse ? flipAxisDirection(axisDirection) : axisDirection;
       case Axis.vertical:
         return reverse ? AxisDirection.up : AxisDirection.down;
     }
@@ -417,5 +427,24 @@ class _RenderSingleChildViewport extends RenderBox with RenderObjectWithChildMix
     }
 
     return leadingScrollOffset - (mainAxisExtent - targetMainAxisExtent) * alignment;
+  }
+
+  @override
+  void showOnScreen([RenderObject child]) {
+    // Logic duplicated in [RenderViewportBase.showOnScreen].
+    if (child != null) {
+      // Move viewport the smallest distance to bring [child] on screen.
+      final double leadingEdgeOffset = getOffsetToReveal(child, 0.0);
+      final double trailingEdgeOffset = getOffsetToReveal(child, 1.0);
+      final double currentOffset = offset.pixels;
+      if ((currentOffset - leadingEdgeOffset).abs() < (currentOffset - trailingEdgeOffset).abs()) {
+        offset.jumpTo(leadingEdgeOffset);
+      } else {
+        offset.jumpTo(trailingEdgeOffset);
+      }
+    }
+
+    // Make sure the viewport itself is on screen.
+    super.showOnScreen();
   }
 }

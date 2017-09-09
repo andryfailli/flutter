@@ -23,6 +23,7 @@ abstract class RunCommandBase extends FlutterCommand {
   // Used by run and drive commands.
   RunCommandBase() {
     addBuildModeFlags(defaultToRelease: false);
+    usesFlavorOption();
     argParser.addFlag('trace-startup',
         negatable: true,
         defaultsTo: false,
@@ -109,11 +110,10 @@ class RunCommand extends RunCommandBase {
     argParser.addOption('use-application-binary',
         hide: !verboseHelp,
         help: 'Specify a pre-built application binary to use when running.');
-    argParser.addOption('kernel',
+    argParser.addFlag('preview-dart-2',
         hide: !verboseHelp,
-        help: 'Path to a pre-built kernel blob to use when running.\n'
-              'This option only exists for testing new kernel code execution on devices\n'
-              'and is not needed during normal application development.');
+        defaultsTo: false,
+        help: 'Preview Dart 2.0 functionality.');
     argParser.addOption('packages',
         hide: !verboseHelp,
         help: 'Specify the path to the .packages file.');
@@ -174,6 +174,16 @@ class RunCommand extends RunCommandBase {
   }
 
   @override
+  Future<Map<String, String>> get usageValues async {
+    final bool isEmulator = await devices[0].isLocalEmulator;
+    final String deviceType = devices.length == 1
+            ? getNameForTargetPlatform(await devices[0].targetPlatform)
+            : 'multiple';
+
+    return <String, String>{ 'cd3': '$isEmulator', 'cd4': deviceType };
+  }
+
+  @override
   void printNoConnectedDevices() {
     super.printNoConnectedDevices();
     if (getCurrentHostPlatform() == HostPlatform.darwin_x64 &&
@@ -198,7 +208,7 @@ class RunCommand extends RunCommandBase {
   bool shouldUseHotMode() {
     final bool hotArg = argResults['hot'] ?? false;
     final bool shouldUseHotMode = hotArg;
-    return (getBuildMode() == BuildMode.debug) && shouldUseHotMode;
+    return getBuildInfo().isDebug && shouldUseHotMode;
   }
 
   bool get runningWithPrebuiltApplication =>
@@ -218,11 +228,12 @@ class RunCommand extends RunCommandBase {
   }
 
   DebuggingOptions _createDebuggingOptions() {
-    if (getBuildMode() == BuildMode.release) {
-      return new DebuggingOptions.disabled(getBuildMode());
+    final BuildInfo buildInfo = getBuildInfo();
+    if (buildInfo.isRelease) {
+      return new DebuggingOptions.disabled(buildInfo);
     } else {
       return new DebuggingOptions.enabled(
-        getBuildMode(),
+        buildInfo,
         startPaused: argResults['start-paused'],
         useTestFonts: argResults['use-test-fonts'],
         enableSoftwareRendering: argResults['enable-software-rendering'],
@@ -264,7 +275,7 @@ class RunCommand extends RunCommandBase {
         throwToolExit(null, exitCode: result);
       return new FlutterCommandResult(
         ExitStatus.success,
-        analyticsParameters: <String>['daemon'],
+        timingLabelParts: <String>['daemon'],
         endTimeOverride: appStartedTime,
       );
     }
@@ -288,7 +299,7 @@ class RunCommand extends RunCommandBase {
     }
 
     final List<FlutterDevice> flutterDevices = devices.map((Device device) {
-      return new FlutterDevice(device);
+      return new FlutterDevice(device, previewDart2: argResults['preview-dart-2']);
     }).toList();
 
     ResidentRunner runner;
@@ -299,7 +310,7 @@ class RunCommand extends RunCommandBase {
         debuggingOptions: _createDebuggingOptions(),
         benchmarkMode: argResults['benchmark'],
         applicationBinary: argResults['use-application-binary'],
-        kernelFilePath: argResults['kernel'],
+        previewDart2: argResults['preview-dart-2'],
         projectRootPath: argResults['project-root'],
         packagesFilePath: argResults['packages'],
         projectAssets: argResults['project-assets'],
@@ -312,13 +323,14 @@ class RunCommand extends RunCommandBase {
         debuggingOptions: _createDebuggingOptions(),
         traceStartup: traceStartup,
         applicationBinary: argResults['use-application-binary'],
+        previewDart2: argResults['preview-dart-2'],
         stayResident: stayResident,
       );
     }
 
     DateTime appStartedTime;
-    // Sync completer so the completing agent attaching to the resident doesn't 
-    // need to know about analytics. 
+    // Sync completer so the completing agent attaching to the resident doesn't
+    // need to know about analytics.
     //
     // Do not add more operations to the future.
     final Completer<Null> appStartedTimeRecorder = new Completer<Null>.sync();
@@ -335,10 +347,10 @@ class RunCommand extends RunCommandBase {
       throwToolExit(null, exitCode: result);
     return new FlutterCommandResult(
       ExitStatus.success,
-      analyticsParameters: <String>[
+      timingLabelParts: <String>[
         hotMode ? 'hot' : 'cold',
         getModeName(getBuildMode()),
-        devices.length == 1 
+        devices.length == 1
             ? getNameForTargetPlatform(await devices[0].targetPlatform)
             : 'multiple',
         devices.length == 1 && await devices[0].isLocalEmulator ? 'emulator' : null

@@ -14,14 +14,17 @@ void main() {
   testWidgets('Does FlatButton contribute semantics', (WidgetTester tester) async {
     final SemanticsTester semantics = new SemanticsTester(tester);
     await tester.pumpWidget(
-      new Material(
-        child: new Center(
-          child: new FlatButton(
-            onPressed: () { },
-            child: const Text('ABC')
-          )
-        )
-      )
+      new Directionality(
+        textDirection: TextDirection.ltr,
+        child: new Material(
+          child: new Center(
+            child: new FlatButton(
+              onPressed: () { },
+              child: const Text('ABC')
+            ),
+          ),
+        ),
+      ),
     );
 
     expect(semantics, hasSemantics(
@@ -41,7 +44,9 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets('Does button highlight + splash colors work if set directly', (WidgetTester tester) async {
+  // This test is very similar to the '...explicit splashColor and highlightColor' test
+  // in icon_button_test.dart. If you change this one, you may want to also change that one.
+  testWidgets('MaterialButton with explicit splashColor and highlightColor', (WidgetTester tester) async {
     final Color directSplashColor = const Color(0xFF000011);
     final Color directHighlightColor = const Color(0xFF000011);
 
@@ -56,9 +61,12 @@ void main() {
     );
 
     await tester.pumpWidget(
-      new Theme(
-        data: new ThemeData(),
-        child: buttonWidget,
+      new Directionality(
+        textDirection: TextDirection.ltr,
+        child: new Theme(
+          data: new ThemeData(),
+          child: buttonWidget,
+        ),
       ),
     );
 
@@ -86,12 +94,15 @@ void main() {
     );
 
     await tester.pumpWidget(
-      new Theme(
-        data: new ThemeData(
-          highlightColor: themeHighlightColor1,
-          splashColor: themeSplashColor1,
+      new Directionality(
+        textDirection: TextDirection.ltr,
+        child: new Theme(
+          data: new ThemeData(
+            highlightColor: themeHighlightColor1,
+            splashColor: themeSplashColor1,
+          ),
+          child: buttonWidget,
         ),
-        child: buttonWidget,
       ),
     );
 
@@ -106,12 +117,15 @@ void main() {
     final Color themeHighlightColor2 = const Color(0xFF002200);
 
     await tester.pumpWidget(
-      new Theme(
-        data: new ThemeData(
-          highlightColor: themeHighlightColor2,
-          splashColor: themeSplashColor2,
+      new Directionality(
+        textDirection: TextDirection.ltr,
+        child: new Theme(
+          data: new ThemeData(
+            highlightColor: themeHighlightColor2,
+            splashColor: themeSplashColor2,
+          ),
+          child: buttonWidget, // same widget, so does not get updated because of us
         ),
-        child: buttonWidget, // same widget, so does not get updated because of us
       ),
     );
 

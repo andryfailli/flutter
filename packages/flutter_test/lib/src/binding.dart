@@ -98,9 +98,20 @@ abstract class TestWidgetsFlutterBinding extends BindingBase
     debugCheckIntrinsicSizes = checkIntrinsicSizes;
   }
 
+  /// The value to set [debugPrint] to while tests are running.
+  ///
+  /// This can be used to redirect console output from the framework, or to
+  /// change the behavior of [debugPrint]. For example,
+  /// [AutomatedTestWidgetsFlutterBinding] uses it to make [debugPrint]
+  /// synchronous, disabling its normal throttling behaviour.
   @protected
   DebugPrintCallback get debugPrintOverride => debugPrint;
 
+  /// The value to set [debugCheckIntrinsicSizes] to while tests are running.
+  ///
+  /// This can be used to enable additional checks. For example,
+  /// [AutomatedTestWidgetsFlutterBinding] sets this to true, so that all tests
+  /// always run with aggressive intrinsic sizing tests enabled.
   @protected
   bool get checkIntrinsicSizes => false;
 
@@ -258,20 +269,22 @@ abstract class TestWidgetsFlutterBinding extends BindingBase
 
   static const TextStyle _kMessageStyle = const TextStyle(
     color: const Color(0xFF917FFF),
-    fontSize: 40.0
+    fontSize: 40.0,
   );
 
   static final Widget _kPreTestMessage = const Center(
     child: const Text(
       'Test starting...',
-      style: _kMessageStyle
+      style: _kMessageStyle,
+      textDirection: TextDirection.ltr,
     )
   );
 
   static final Widget _kPostTestMessage = const Center(
     child: const Text(
       'Test finished.',
-      style: _kMessageStyle
+      style: _kMessageStyle,
+      textDirection: TextDirection.ltr,
     )
   );
 
@@ -313,6 +326,7 @@ abstract class TestWidgetsFlutterBinding extends BindingBase
     assert(Zone.current == _parentZone);
     assert(_currentTestCompleter != null);
     if (_pendingExceptionDetails != null) {
+      debugPrint = debugPrintOverride; // just in case the test overrides it -- otherwise we won't see the error!
       FlutterError.dumpErrorToConsole(_pendingExceptionDetails, forceReport: true);
       // test_package.registerException actually just calls the current zone's error handler (that
       // is to say, _parentZone's handleUncaughtError function). FakeAsync doesn't add one of those,
@@ -333,6 +347,7 @@ abstract class TestWidgetsFlutterBinding extends BindingBase
     int _exceptionCount = 0; // number of un-taken exceptions
     FlutterError.onError = (FlutterErrorDetails details) {
       if (_pendingExceptionDetails != null) {
+        debugPrint = debugPrintOverride; // just in case the test overrides it -- otherwise we won't see the errors!
         if (_exceptionCount == 0) {
           _exceptionCount = 2;
           FlutterError.dumpErrorToConsole(_pendingExceptionDetails, forceReport: true);
@@ -358,6 +373,7 @@ abstract class TestWidgetsFlutterBinding extends BindingBase
           // If we silently dropped these errors on the ground, nobody would ever know. So instead
           // we report them to the console. They don't cause test failures, but hopefully someone
           // will see them in the logs at some point.
+          debugPrint = debugPrintOverride; // just in case the test overrides it -- otherwise we won't see the error!
           FlutterError.dumpErrorToConsole(new FlutterErrorDetails(
             exception: exception,
             stack: _unmangle(stack),
@@ -419,13 +435,13 @@ abstract class TestWidgetsFlutterBinding extends BindingBase
           }
         ));
         assert(_parentZone != null);
-        assert(_pendingExceptionDetails != null);
+        assert(_pendingExceptionDetails != null, 'A test overrode FlutterError.onError but either failed to return it to its original state, or had unexpected additional errors that it could not handle. Typically, this is caused by using expect() before restoring FlutterError.onError.');
         _parentZone.run<Null>(_testCompletionHandler);
       }
     );
     _parentZone = Zone.current;
     final Zone testZone = _parentZone.fork(specification: errorHandlingZoneSpecification);
-    testZone.runBinaryGuarded(_runTestBody, testBody, invariantTester)
+    testZone.runBinary(_runTestBody, testBody, invariantTester)
       .whenComplete(_testCompletionHandler);
     asyncBarrier(); // When using AutomatedTestWidgetsFlutterBinding, this flushes the microtasks.
     return _currentTestCompleter.future;
@@ -462,6 +478,9 @@ abstract class TestWidgetsFlutterBinding extends BindingBase
     assert(debugAssertAllFoundationVarsUnset(
       'The value of a foundation debug variable was changed by the test.',
       debugPrintOverride: debugPrintOverride,
+    ));
+    assert(debugAssertAllGesturesVarsUnset(
+      'The value of a gestures debug variable was changed by the test.',
     ));
     assert(debugAssertAllRenderVarsUnset(
       'The value of a rendering debug variable was changed by the test.',
@@ -1002,7 +1021,8 @@ class _LiveTestRenderView extends RenderView {
       _label = null;
       return;
     }
-    _label ??= new TextPainter(textAlign: TextAlign.left);
+    // TODO(ianh): Figure out if the test name is actually RTL.
+    _label ??= new TextPainter(textAlign: TextAlign.left, textDirection: TextDirection.ltr);
     _label.text = new TextSpan(text: value, style: _labelStyle);
     _label.layout();
     if (onNeedPaint != null)

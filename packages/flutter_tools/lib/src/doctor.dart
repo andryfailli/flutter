@@ -193,7 +193,7 @@ class _FlutterValidator extends DoctorValidator {
   @override
   Future<ValidationResult> validate() async {
     final List<ValidationMessage> messages = <ValidationMessage>[];
-    final ValidationType valid = ValidationType.installed;
+    ValidationType valid = ValidationType.installed;
 
     final FlutterVersion version = FlutterVersion.instance;
 
@@ -215,6 +215,7 @@ class _FlutterValidator extends DoctorValidator {
     if (!_genSnapshotRuns(genSnapshotPath)) {
       messages.add(new ValidationMessage.error('Downloaded executables cannot execute '
           'on host (see https://github.com/flutter/flutter/issues/6207 for more information)'));
+      valid = ValidationType.partial;
     }
 
     return new ValidationResult(valid, messages,
@@ -254,7 +255,7 @@ abstract class IntelliJValidator extends DoctorValidator {
   };
 
   static final Version kMinIdeaVersion = new Version(2017, 1, 0);
-  static final Version kMinFlutterPluginVersion = new Version(14, 0, 0);
+  static final Version kMinFlutterPluginVersion = new Version(16, 0, 0);
 
   static Iterable<DoctorValidator> get installedValidators {
     if (platform.isLinux || platform.isWindows)

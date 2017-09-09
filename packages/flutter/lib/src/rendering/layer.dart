@@ -32,7 +32,7 @@ import 'node.dart';
 ///
 ///  * [RenderView.compositeFrame], which implements this recomposition protocol
 ///    for painting [RenderObject] trees on the the display.
-abstract class Layer extends AbstractNode with TreeDiagnosticsMixin {
+abstract class Layer extends AbstractNode with DiagnosticableTreeMixin {
   /// This layer's parent in the layer tree.
   ///
   /// The [parent] of the root node in the layer tree is null.
@@ -102,15 +102,13 @@ abstract class Layer extends AbstractNode with TreeDiagnosticsMixin {
   dynamic debugCreator;
 
   @override
-  String toString() => '${super.toString()}${ owner == null ? " DETACHED" : ""}';
+  String toStringShort() => '${super.toStringShort()}${ owner == null ? " DETACHED" : ""}';
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    if (parent == null && owner != null)
-      description.add('owner: $owner');
-    if (debugCreator != null)
-      description.add('creator: $debugCreator');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<Object>('owner', owner, hidden: parent != null, defaultValue: null));
+    description.add(new DiagnosticsProperty<dynamic>('creator', debugCreator, defaultValue: null));
   }
 }
 
@@ -118,12 +116,13 @@ abstract class Layer extends AbstractNode with TreeDiagnosticsMixin {
 ///
 /// Picture layers are always leaves in the layer tree.
 class PictureLayer extends Layer {
+  /// Creates a leaf layer for the layer tree.
   PictureLayer(this.canvasBounds);
 
   /// The bounds that were used for the canvas that drew this layer's [picture].
   ///
   /// This is purely advisory. It is included in the information dumped with
-  /// [dumpLayerTree] (which can be triggered by pressing "L" when using
+  /// [debugDumpLayerTree] (which can be triggered by pressing "L" when using
   /// "flutter run" at the console), which can help debug why certain drawing
   /// commands are being culled.
   final Rect canvasBounds;
@@ -163,9 +162,9 @@ class PictureLayer extends Layer {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('paint bounds: $canvasBounds');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<Rect>('paint bounds', canvasBounds));
   }
 }
 
@@ -413,24 +412,20 @@ class ContainerLayer extends Layer {
   }
 
   @override
-  String debugDescribeChildren(String prefix) {
+  List<DiagnosticsNode> debugDescribeChildren() {
+    final List<DiagnosticsNode> children = <DiagnosticsNode>[];
     if (firstChild == null)
-      return '';
-    final StringBuffer result = new StringBuffer()
-      ..write(prefix)
-      ..write(' \u2502\n');
+      return children;
     Layer child = firstChild;
     int count = 1;
-    while (child != lastChild) {
-      result.write(child.toStringDeep("$prefix \u251C\u2500child $count: ", "$prefix \u2502"));
+    while (true) {
+      children.add(child.toDiagnosticsNode(name: 'child $count'));
+      if (child == lastChild)
+        break;
       count += 1;
       child = child.nextSibling;
     }
-    if (child != null) {
-      assert(child == lastChild);
-      result.write(child.toStringDeep("$prefix \u2514\u2500child $count: ", "$prefix  "));
-    }
-    return result.toString();
+    return children;
   }
 }
 
@@ -465,9 +460,9 @@ class OffsetLayer extends ContainerLayer {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('offset: $offset');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<Offset>('offset', offset));
   }
 }
 
@@ -493,9 +488,9 @@ class ClipRectLayer extends ContainerLayer {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('clipRect: $clipRect');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<Rect>('clipRect', clipRect));
   }
 }
 
@@ -521,9 +516,9 @@ class ClipRRectLayer extends ContainerLayer {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('clipRRect: $clipRRect');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<RRect>('clipRRect', clipRRect));
   }
 }
 
@@ -549,9 +544,9 @@ class ClipPathLayer extends ContainerLayer {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('clipPath: $clipPath');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<Path>('clipPath', clipPath));
   }
 }
 
@@ -601,10 +596,9 @@ class TransformLayer extends OffsetLayer {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('transform:');
-    description.addAll(debugDescribeTransform(transform));
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new TransformProperty('transform', transform));
   }
 }
 
@@ -633,9 +627,9 @@ class OpacityLayer extends ContainerLayer {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('alpha: $alpha');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new IntProperty('alpha', alpha));
   }
 }
 
@@ -673,11 +667,11 @@ class ShaderMaskLayer extends ContainerLayer {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('shader: $shader');
-    description.add('maskRect: $maskRect');
-    description.add('blendMode: $blendMode');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<Shader>('shader', shader));
+    description.add(new DiagnosticsProperty<Rect>('maskRect', maskRect));
+    description.add(new DiagnosticsProperty<BlendMode>('blendMode', blendMode));
   }
 }
 
@@ -751,9 +745,11 @@ class PhysicalModelLayer extends ContainerLayer {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('clipRRect: $clipRRect');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<RRect>('clipRRect', clipRRect));
+    description.add(new DoubleProperty('elevation', elevation));
+    description.add(new DiagnosticsProperty<Color>('color', color));
   }
 }
 
@@ -775,7 +771,7 @@ class LayerLink {
   LeaderLayer _leader;
 
   @override
-  String toString() => '$runtimeType#$hashCode(${ _leader != null ? "<linked>" : "<dangling>" })';
+  String toString() => '${describeIdentity(this)}(${ _leader != null ? "<linked>" : "<dangling>" })';
 }
 
 /// A composited layer that can be followed by a [FollowerLayer].
@@ -858,10 +854,10 @@ class LeaderLayer extends ContainerLayer {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('offset: $offset');
-    description.add('link: $link');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<Offset>('offset', offset));
+    description.add(new DiagnosticsProperty<LayerLink>('link', link));
   }
 }
 
@@ -870,7 +866,7 @@ class LeaderLayer extends ContainerLayer {
 ///
 /// If any of the ancestors of this layer have a degenerate matrix (e.g. scaling
 /// by zero), then the [FollowerLayer] will not be able to transform its child
-/// to the coordinate space of the [Leader].
+/// to the coordinate space of the [LeaderLayer].
 ///
 /// A [linkedOffset] property can be provided to further offset the child layer
 /// from the leader layer, for example if the child is to follow the linked
@@ -1047,12 +1043,9 @@ class FollowerLayer extends ContainerLayer {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('link: $link');
-    if (_lastTransform != null) {
-      description.add('transform:');
-      description.addAll(debugDescribeTransform(getLastTransform()));
-    }
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<LayerLink>('link', link));
+    description.add(new TransformProperty('transform', getLastTransform(), defaultValue: null));
   }
 }

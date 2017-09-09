@@ -8,6 +8,7 @@ import 'package:flutter_tools/src/artifacts.dart';
 import 'package:flutter_tools/src/base/config.dart';
 import 'package:flutter_tools/src/base/context.dart';
 import 'package:flutter_tools/src/base/file_system.dart';
+import 'package:flutter_tools/src/base/io.dart';
 import 'package:flutter_tools/src/base/logger.dart';
 import 'package:flutter_tools/src/base/os.dart';
 import 'package:flutter_tools/src/base/platform.dart';
@@ -73,6 +74,7 @@ void testUsingContext(String description, dynamic testMethod(), {
 
     // The context always starts with these value since others depend on them.
     testContext
+      ..putIfAbsent(Stdio, () => const Stdio())
       ..putIfAbsent(Platform, () => const LocalPlatform())
       ..putIfAbsent(FileSystem, () => const LocalFileSystem())
       ..putIfAbsent(ProcessManager, () => const LocalProcessManager())
@@ -218,10 +220,10 @@ class MockUsage implements Usage {
   String get clientId => '00000000-0000-4000-0000-000000000000';
 
   @override
-  void sendCommand(String command) { }
+  void sendCommand(String command, { Map<String, String> parameters }) { }
 
   @override
-  void sendEvent(String category, String parameter) { }
+  void sendEvent(String category, String parameter, { Map<String, String> parameters }) { }
 
   @override
   void sendTiming(String category, String variableName, Duration duration, { String label }) { }

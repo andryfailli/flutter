@@ -89,12 +89,10 @@ class Tab extends StatelessWidget {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    if (text != null)
-      description.add('text: $text');
-    if (icon != null)
-      description.add('icon: $icon');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new StringProperty('text', text, defaultValue: null));
+    description.add(new DiagnosticsProperty<Widget>('icon', icon, defaultValue: null));
   }
 }
 
@@ -152,6 +150,8 @@ class _TabLabelBarRenderer extends RenderFlex {
     MainAxisSize mainAxisSize,
     MainAxisAlignment mainAxisAlignment,
     CrossAxisAlignment crossAxisAlignment,
+    TextDirection textDirection,
+    VerticalDirection verticalDirection,
     TextBaseline textBaseline,
     @required this.onPerformLayout,
   }) : assert(onPerformLayout != null),
@@ -161,6 +161,8 @@ class _TabLabelBarRenderer extends RenderFlex {
          mainAxisSize: mainAxisSize,
          mainAxisAlignment: mainAxisAlignment,
          crossAxisAlignment: crossAxisAlignment,
+         textDirection: textDirection,
+         verticalDirection: verticalDirection,
          textBaseline: textBaseline,
        );
 
@@ -190,6 +192,8 @@ class _TabLabelBar extends Flex {
     Key key,
     MainAxisAlignment mainAxisAlignment,
     CrossAxisAlignment crossAxisAlignment,
+    TextDirection textDirection,
+    VerticalDirection verticalDirection: VerticalDirection.down,
     List<Widget> children: const <Widget>[],
     this.onPerformLayout,
   }) : super(
@@ -199,6 +203,8 @@ class _TabLabelBar extends Flex {
     mainAxisSize: MainAxisSize.max,
     mainAxisAlignment: MainAxisAlignment.start,
     crossAxisAlignment: CrossAxisAlignment.center,
+    textDirection: textDirection,
+    verticalDirection: verticalDirection,
   );
 
   final ValueChanged<List<double>> onPerformLayout;
@@ -210,6 +216,8 @@ class _TabLabelBar extends Flex {
       mainAxisAlignment: mainAxisAlignment,
       mainAxisSize: mainAxisSize,
       crossAxisAlignment: crossAxisAlignment,
+      textDirection: getEffectiveTextDirection(context),
+      verticalDirection: verticalDirection,
       textBaseline: textBaseline,
       onPerformLayout: onPerformLayout,
     );
@@ -404,15 +412,15 @@ class _TabBarScrollController extends ScrollController {
 class TabBar extends StatefulWidget implements PreferredSizeWidget {
   /// Creates a material design tab bar.
   ///
-  /// The [tabs] argument cannot be null and its length must match the [controller]'s
+  /// The [tabs] argument must not be null and its length must match the [controller]'s
   /// [TabController.length].
   ///
   /// If a [TabController] is not provided, then there must be a
   /// [DefaultTabController] ancestor.
   ///
-  /// The [indicatorWeight] parameter defaults to 2, and cannot be null.
+  /// The [indicatorWeight] parameter defaults to 2, and must not be null.
   ///
-  /// The [indicatorPadding] parameter defaults to [EdgeInsets.zero], and cannot be null.
+  /// The [indicatorPadding] parameter defaults to [EdgeInsets.zero], and must not be null.
   TabBar({
     Key key,
     @required this.tabs,
@@ -460,9 +468,12 @@ class TabBar extends StatefulWidget implements PreferredSizeWidget {
   final double indicatorWeight;
 
   /// The horizontal padding for the line that appears below the selected tab.
-  /// For [isScrollable] tab bars, specifying [kDefaultTabLabelPadding] will align
+  /// For [isScrollable] tab bars, specifying [kTabLabelPadding] will align
   /// the indicator with the tab's text for [Tab] widgets and all but the
   /// shortest [Tab.text] values.
+  ///
+  /// The [EdgeInsets.top] and [EdgeInsets.bottom] values of the
+  /// [indicatorPadding] are ignored.
   ///
   /// The default value of [indicatorPadding] is [EdgeInsets.zero].
   final EdgeInsets indicatorPadding;
@@ -736,7 +747,10 @@ class _TabBarState extends State<TabBar> {
           children: <Widget>[
             new InkWell(
               onTap: () { _handleTap(index); },
-              child: wrappedTabs[index],
+              child: new Padding(
+                padding: new EdgeInsets.only(bottom: widget.indicatorWeight),
+                child: wrappedTabs[index],
+              ),
             ),
             new Semantics(
               selected: index == _currentIndex,
@@ -752,9 +766,7 @@ class _TabBarState extends State<TabBar> {
 
     Widget tabBar = new CustomPaint(
       painter: _indicatorPainter,
-      child: new Padding(
-        padding: new EdgeInsets.only(bottom: widget.indicatorWeight),
-        child: new _TabStyle(
+      child: new _TabStyle(
           animation: kAlwaysDismissedAnimation,
           selected: false,
           labelColor: widget.labelColor,
@@ -766,7 +778,6 @@ class _TabBarState extends State<TabBar> {
             children:  wrappedTabs,
           ),
         ),
-      ),
     );
 
     if (widget.isScrollable) {
@@ -795,6 +806,7 @@ class TabBarView extends StatefulWidget {
     Key key,
     @required this.children,
     this.controller,
+    this.physics,
   }) : assert(children != null), super(key: key);
 
   /// This widget's selection and animation state.
@@ -805,6 +817,17 @@ class TabBarView extends StatefulWidget {
 
   /// One widget per tab.
   final List<Widget> children;
+
+  /// How the page view should respond to user input.
+  ///
+  /// For example, determines how the page view continues to animate after the
+  /// user stops dragging the page view.
+  ///
+  /// The physics are modified to snap to page boundaries using
+  /// [PageScrollPhysics] prior to being used.
+  ///
+  /// Defaults to matching platform conventions.
+  final ScrollPhysics physics;
 
   @override
   _TabBarViewState createState() => new _TabBarViewState();
@@ -954,7 +977,7 @@ class _TabBarViewState extends State<TabBarView> {
       onNotification: _handleScrollNotification,
       child: new PageView(
         controller: _pageController,
-        physics: _kTabBarViewPhysics,
+        physics: widget.physics == null ? _kTabBarViewPhysics : _kTabBarViewPhysics.applyTo(widget.physics),
         children: _children,
       ),
     );
@@ -967,7 +990,7 @@ class _TabBarViewState extends State<TabBarView> {
 class TabPageSelectorIndicator extends StatelessWidget {
   /// Creates an indicator used by [TabPageSelector].
   ///
-  /// The [backgroundColor], [borderColor], and [size] parameters cannot be null.
+  /// The [backgroundColor], [borderColor], and [size] parameters must not be null.
   const TabPageSelectorIndicator({
     Key key,
     @required this.backgroundColor,

@@ -59,9 +59,22 @@ tasks:
     stage: devicelab
     required_agent_capabilities: ["has-android-device"]
 
+  flavors_test:
+    description: >
+      Checks that flavored builds work on Android.
+    stage: devicelab
+    required_agent_capabilities: ["has-android-device"]
+    flaky: true
+
   channels_integration_test:
     description: >
       Checks that platform channels work on Android.
+    stage: devicelab
+    required_agent_capabilities: ["has-android-device"]
+
+  platform_interaction_test:
+    description: >
+      Checks platform interaction on Android.
     stage: devicelab
     required_agent_capabilities: ["has-android-device"]
 
@@ -114,6 +127,19 @@ tasks:
     stage: devicelab
     required_agent_capabilities: ["has-android-device"]
 
+  commands_test:
+    description: >
+      Runs tests of flutter run commands.
+    stage: devicelab
+    required_agent_capabilities: ["has-android-device"]
+
+  service_extensions_test:
+    description: >
+      Validates our service protocol extensions.
+    stage: devicelab
+    required_agent_capabilities: ["has-android-device"]
+    flaky: true
+
   android_sample_catalog_generator:
     description: >
       Builds sample catalog markdown pages and Android screenshots
@@ -126,23 +152,53 @@ tasks:
       Measures duration of building the initial semantics tree.
     stage: devicelab
     required_agent_capabilities: ["linux/android"]
-    flaky: true
+
+  routing_test:
+    description: >
+      Verifies that `flutter drive --route` still works. No performance numbers.
+    stage: devicelab
+    required_agent_capabilities: ["linux/android"]
+
+  gradle_plugin_test:
+    description: >
+      Verifies that the Flutter Gradle plugin supports standard and custom Android build types.
+    stage: devicelab
+    required_agent_capabilities: ["linux/android"]
+
+  flutter_gallery_instrumentation_test:
+    description: >
+      Same as flutter_gallery__transition_perf but uses Android instrumentation
+      framework, and therefore does not require a host computer to run. This
+      test can run on off-the-shelf infrastructures, such as Firebase Test Lab.
+    stage: devicelab
+    required_agent_capabilities: ["linux/android"]
 
   # iOS on-device tests
+
+  flavors_test_ios:
+    description: >
+      Checks that flavored builds work on iOS.
+    stage: devicelab_ios
+    required_agent_capabilities: ["has-ios-device"]
+    flaky: true
 
   channels_integration_test_ios:
     description: >
       Checks that platform channels work on iOS.
     stage: devicelab_ios
     required_agent_capabilities: ["has-ios-device"]
-    flaky: true
+
+  platform_interaction_test_ios:
+    description: >
+      Checks platform interaction on iOS.
+    stage: devicelab_ios
+    required_agent_capabilities: ["has-ios-device"]
 
   platform_channel_sample_test_ios:
     description: >
       Runs a driver test on the Platform Channel sample app on iOS.
     stage: devicelab_ios
     required_agent_capabilities: ["has-ios-device"]
-    flaky: true
 
   complex_layout_scroll_perf_ios__timeline_summary:
     description: >
@@ -150,7 +206,6 @@ tasks:
       iOS.
     stage: devicelab_ios
     required_agent_capabilities: ["has-ios-device"]
-    flaky: true
 
 #  flutter_gallery_ios__start_up:
 #    description: >
@@ -172,14 +227,12 @@ tasks:
       iOS.
     stage: devicelab_ios
     required_agent_capabilities: ["has-ios-device"]
-    flaky: true
 
   basic_material_app_ios__size:
     description: >
       Measures the IPA size of a basic material app.
     stage: devicelab_ios
     required_agent_capabilities: ["has-ios-device"]
-    flaky: true
 
 #  microbenchmarks_ios:
 #    description: >
@@ -201,16 +254,21 @@ tasks:
       Runs end-to-end Flutter tests on iOS.
     stage: devicelab_ios
     required_agent_capabilities: ["has-ios-device"]
-    flaky: true
 
   ios_sample_catalog_generator:
     description: >
       Builds sample catalog markdown pages and iOS screenshots
     stage: devicelab_ios
     required_agent_capabilities: ["has-ios-device"]
-    flaky: true
 
   # Tests running on Windows host
+
+  flavors_test_win:
+    description: >
+      Checks that flavored builds work on Windows.
+    stage: devicelab_win
+    required_agent_capabilities: ["windows"]
+    flaky: true
 
   channels_integration_test_win:
     description: >
@@ -255,6 +313,13 @@ tasks:
     description: >
       Collects various performance metrics from AOT builds of the Flutter
       Gallery.
+    stage: devicelab
+    required_agent_capabilities: ["linux/android"]
+
+  flutter_gallery__preview_dart_2_build:
+    description: >
+      Collects various performance metrics from AOT builds of the Flutter
+      Gallery under --preview-dart-2 that enables new Dart 2.0 frontend.
     stage: devicelab
     required_agent_capabilities: ["linux/android"]
 

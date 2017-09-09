@@ -5,8 +5,12 @@
 import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/widgets.dart';
+
+import 'material.dart';
+import 'shadows.dart';
+import 'theme.dart';
 
 /// The base type for [MaterialSlice] and [MaterialGap].
 ///
@@ -118,10 +122,10 @@ class MergeableMaterial extends StatefulWidget {
   final bool hasDividers;
 
   @override
-  String toString() {
-    return 'MergeableMaterial('
-      'key: $key, mainAxis: $mainAxis, elevation: ${elevation.toStringAsFixed(1)}'
-    ')';
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new EnumProperty<Axis>('mainAxis', mainAxis));
+    properties.add(new DoubleProperty('elevation', elevation.toDouble()));
   }
 
   @override

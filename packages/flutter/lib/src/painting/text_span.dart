@@ -11,19 +11,6 @@ import 'package:flutter/services.dart';
 import 'basic_types.dart';
 import 'text_style.dart';
 
-// TODO(ianh): This should be on List itself.
-bool _deepEquals(List<Object> a, List<Object> b) {
-  if (a == null)
-    return b == null;
-  if (b == null || a.length != b.length)
-    return false;
-  for (int i = 0; i < a.length; i += 1) {
-    if (a[i] != b[i])
-      return false;
-  }
-  return true;
-}
-
 /// An immutable span of text.
 ///
 /// A [TextSpan] object can be styled using its [style] property.
@@ -60,7 +47,7 @@ bool _deepEquals(List<Object> a, List<Object> b) {
 ///  * [RichText], a widget for finer control of text rendering.
 ///  * [TextPainter], a class for painting [TextSpan] objects on a [Canvas].
 @immutable
-class TextSpan {
+class TextSpan extends DiagnosticableTree {
   /// Creates a [TextSpan] with the given values.
   ///
   /// For the object to be useful, at least one of [text] or
@@ -109,7 +96,7 @@ class TextSpan {
   /// ## Sample code
   ///
   /// This example shows how to manage the lifetime of a gesture recognizer
-  /// provided to a [TextSpan] object. It defines a [BuzzingText] widget which
+  /// provided to a [TextSpan] object. It defines a `BuzzingText` widget which
   /// uses the [HapticFeedback] class to vibrate the device when the user
   /// long-presses the "find the" span, which is underlined in wavy green. The
   /// hit-testing is handled by the [RichText] widget.
@@ -261,31 +248,6 @@ class TextSpan {
     return result;
   }
 
-  @override
-  String toString([String prefix = '']) {
-    final StringBuffer buffer = new StringBuffer();
-    buffer.writeln('$prefix$runtimeType:');
-    final String indent = '$prefix  ';
-    if (style != null)
-      buffer.writeln(style.toString(indent));
-    if (recognizer != null)
-      buffer.writeln('${indent}recognizer: ${recognizer.runtimeType}');
-    if (text != null)
-      buffer.writeln('$indent"$text"');
-    if (children != null) {
-      for (TextSpan child in children) {
-        if (child != null) {
-          buffer.write(child.toString(indent));
-        } else {
-          buffer.writeln('$indent<null>');
-        }
-      }
-    }
-    if (style == null && text == null && children == null)
-      buffer.writeln('$indent(empty)');
-    return buffer.toString();
-  }
-
   /// In checked mode, throws an exception if the object is not in a
   /// valid configuration. Otherwise, returns true.
   ///
@@ -309,12 +271,45 @@ class TextSpan {
           'TextSpan contains a null child.\n'
           'A TextSpan object with a non-null child list should not have any nulls in its child list.\n'
           'The full text in question was:\n'
-          '${toString("  ")}'
+          '${toStringDeep('  ')}'
         );
       }
       return true;
     });
     return true;
+  }
+
+  /// Describe the difference between this text span and another, in terms of
+  /// how much damage it will make to the rendering. The comparison is deep.
+  ///
+  /// See also:
+  ///
+  ///  * [TextStyle.compareTo], which does the same thing for [TextStyle]s.
+  RenderComparison compareTo(TextSpan other) {
+    if (identical(this, other))
+      return RenderComparison.identical;
+    if (other.text != text ||
+        children?.length != other.children?.length ||
+        (style == null) != (other.style == null))
+      return RenderComparison.layout;
+    RenderComparison result = recognizer == other.recognizer ? RenderComparison.identical : RenderComparison.metadata;
+    if (style != null) {
+      final RenderComparison candidate = style.compareTo(other.style);
+      if (candidate.index > result.index)
+        result = candidate;
+      if (result == RenderComparison.layout)
+        return result;
+    }
+    if (children != null) {
+      for (int index = 0; index < children.length; index += 1) {
+        final RenderComparison candidate = children[index].compareTo(other.children[index]);
+        if (candidate.index > result.index)
+          result = candidate;
+        if (result == RenderComparison.layout)
+          return result;
+      }
+    }
+    return result;
   }
 
   @override
@@ -327,9 +322,45 @@ class TextSpan {
     return typedOther.text == text
         && typedOther.style == style
         && typedOther.recognizer == recognizer
-        && _deepEquals(typedOther.children, children);
+        && listEquals<TextSpan>(typedOther.children, children);
   }
 
   @override
   int get hashCode => hashValues(style, text, recognizer, hashList(children));
+
+  @override
+  String toStringShort() => '$runtimeType';
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.defaultDiagnosticsTreeStyle = DiagnosticsTreeStyle.whitespace;
+    // Properties on style are added as if they were properties directly on
+    // this TextSpan.
+    if (style != null)
+      style.debugFillProperties(properties);
+
+    properties.add(new DiagnosticsProperty<GestureRecognizer>(
+      'recognizer', recognizer,
+      description: recognizer?.runtimeType?.toString(),
+      defaultValue: null,
+    ));
+
+    properties.add(new StringProperty('text', text, showName: false, defaultValue: null));
+    if (style == null && text == null && children == null)
+      properties.add(new DiagnosticsNode.message('(empty)'));
+  }
+
+  @override
+  List<DiagnosticsNode> debugDescribeChildren() {
+    if (children == null)
+      return const <DiagnosticsNode>[];
+    return children.map((TextSpan child) {
+      if (child != null) {
+        return child.toDiagnosticsNode();
+      } else {
+        return new DiagnosticsNode.message('<null child>');
+      }
+    }).toList();
+  }
 }

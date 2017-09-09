@@ -12,6 +12,7 @@ import 'flat_button.dart';
 import 'icons.dart';
 import 'ink_well.dart';
 import 'material.dart';
+import 'material_localizations.dart';
 import 'theme.dart';
 import 'typography.dart';
 
@@ -345,6 +346,7 @@ class _StepperState extends State<Stepper> with TickerProviderStateMixin {
     assert(cancelColor != null);
 
     final ThemeData themeData = Theme.of(context);
+    final MaterialLocalizations localizations = MaterialLocalizations.of(context);
 
     return new Container(
       margin: const EdgeInsets.only(top: 16.0),
@@ -357,15 +359,15 @@ class _StepperState extends State<Stepper> with TickerProviderStateMixin {
               color: _isDark() ? themeData.backgroundColor : themeData.primaryColor,
               textColor: Colors.white,
               textTheme: ButtonTextTheme.normal,
-              child: const Text('CONTINUE'),
+              child: new Text(localizations.continueButtonLabel),
             ),
             new Container(
-              margin: const EdgeInsets.only(left: 8.0),
+              margin: const EdgeInsetsDirectional.only(start: 8.0),
               child: new FlatButton(
                 onPressed: widget.onStepCancel,
                 textColor: cancelColor,
                 textTheme: ButtonTextTheme.normal,
-                child: const Text('CANCEL'),
+                child: new Text(localizations.cancelButtonLabel),
               ),
             ),
           ],
@@ -504,9 +506,7 @@ class _StepperState extends State<Stepper> with TickerProviderStateMixin {
             ]
           ),
           new Container(
-            margin: const EdgeInsets.only(
-              left: 12.0
-            ),
+            margin: const EdgeInsetsDirectional.only(start: 12.0),
             child: _buildHeaderText(index)
           )
         ]
@@ -517,8 +517,8 @@ class _StepperState extends State<Stepper> with TickerProviderStateMixin {
   Widget _buildVerticalBody(int index) {
     return new Stack(
       children: <Widget>[
-        new Positioned(
-          left: 24.0,
+        new PositionedDirectional(
+          start: 24.0,
           top: 0.0,
           bottom: 0.0,
           child: new SizedBox(
@@ -536,9 +536,9 @@ class _StepperState extends State<Stepper> with TickerProviderStateMixin {
         new AnimatedCrossFade(
           firstChild: new Container(height: 0.0),
           secondChild: new Container(
-            margin: const EdgeInsets.only(
-              left: 60.0,
-              right: 24.0,
+            margin: const EdgeInsetsDirectional.only(
+              start: 60.0,
+              end: 24.0,
               bottom: 24.0,
             ),
             child: new Column(
@@ -612,7 +612,7 @@ class _StepperState extends State<Stepper> with TickerProviderStateMixin {
                 ),
               ),
               new Container(
-                margin: const EdgeInsets.only(left: 12.0),
+                margin: const EdgeInsetsDirectional.only(start: 12.0),
                 child: _buildHeaderText(i),
               ),
             ],
