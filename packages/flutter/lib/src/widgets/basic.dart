@@ -29,6 +29,7 @@ export 'package:flutter/rendering.dart' show
   FlowDelegate,
   FlowPaintingContext,
   FractionalOffsetTween,
+  FractionalOffsetGeometryTween,
   HitTestBehavior,
   LayerLink,
   MainAxisAlignment,
@@ -54,6 +55,56 @@ export 'package:flutter/rendering.dart' show
   ValueGetter,
   WrapAlignment,
   WrapCrossAlignment;
+
+// BIDIRECTIONAL TEXT SUPPORT
+
+/// A widget that determines the ambient directionality of text and
+/// text-direction-sensitive render objects.
+///
+/// For example, [Padding] depends on the [Directionality] to resolve
+/// [EdgeInsetsDirectional] objects into absolute [EdgeInsets] objects.
+class Directionality extends InheritedWidget {
+  /// Creates a widget that determines the directionality of text and
+  /// text-direction-sensitive render objects.
+  ///
+  /// The [textDirection] and [child] arguments must not be null.
+  const Directionality({
+    Key key,
+    @required this.textDirection,
+    @required Widget child
+  }) : assert(textDirection != null),
+       assert(child != null),
+       super(key: key, child: child);
+
+  /// The text direction for this subtree.
+  final TextDirection textDirection;
+
+  /// The text direction from the closest instance of this class that encloses
+  /// the given context.
+  ///
+  /// If there is no [Directionality] ancestor widget in the tree at the given
+  /// context, then this will return null.
+  ///
+  /// Typical usage is as follows:
+  ///
+  /// ```dart
+  /// TextDirection textDirection = Directionality.of(context);
+  /// ```
+  static TextDirection of(BuildContext context) {
+    final Directionality widget = context.inheritFromWidgetOfExactType(Directionality);
+    return widget?.textDirection;
+  }
+
+  @override
+  bool updateShouldNotify(Directionality old) => textDirection != old.textDirection;
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new EnumProperty<TextDirection>('textDirection', textDirection));
+  }
+}
+
 
 // PAINTING NODES
 
@@ -120,9 +171,9 @@ class Opacity extends SingleChildRenderObjectWidget {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('opacity: $opacity');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DoubleProperty('opacity', opacity));
   }
 }
 
@@ -256,7 +307,10 @@ class BackdropFilter extends SingleChildRenderObjectWidget {
 ///
 /// Custom painters normally size themselves to their child. If they do not have
 /// a child, they attempt to size themselves to the [size], which defaults to
-/// [Size.zero].
+/// [Size.zero].  [size] must not be null.
+///
+/// [isComplex] and [willChange] are hints to the compositor's raster cache
+/// and must not be null.
 ///
 /// ## Sample code
 ///
@@ -286,9 +340,18 @@ class BackdropFilter extends SingleChildRenderObjectWidget {
 ///  * [Canvas], the class that a custom painter uses to paint.
 class CustomPaint extends SingleChildRenderObjectWidget {
   /// Creates a widget that delegates its painting.
-  const CustomPaint({ Key key, this.painter, this.foregroundPainter, this.size: Size.zero, Widget child })
-    : assert(size != null),
-      super(key: key, child: child);
+  const CustomPaint({
+    Key key,
+    this.painter,
+    this.foregroundPainter,
+    this.size: Size.zero,
+    this.isComplex: false,
+    this.willChange: false,
+    Widget child
+  }) : assert(size != null),
+       assert(isComplex != null),
+       assert(willChange != null),
+       super(key: key, child: child);
 
   /// The painter that paints before the children.
   final CustomPainter painter;
@@ -305,12 +368,27 @@ class CustomPaint extends SingleChildRenderObjectWidget {
   /// instead.
   final Size size;
 
+  /// Whether the painting is complex enough to benefit from caching.
+  ///
+  /// The compositor contains a raster cache that holds bitmaps of layers in
+  /// order to avoid the cost of repeatedly rendering those layers on each
+  /// frame.  If this flag is not set, then the compositor will apply its own
+  /// heuristics to decide whether the this layer is complex enough to benefit
+  /// from caching.
+  final bool isComplex;
+
+  /// Whether the raster cache should be told that this painting is likely
+  /// to change in the next frame.
+  final bool willChange;
+
   @override
   RenderCustomPaint createRenderObject(BuildContext context) {
     return new RenderCustomPaint(
       painter: painter,
       foregroundPainter: foregroundPainter,
       preferredSize: size,
+      isComplex: isComplex,
+      willChange: willChange,
     );
   }
 
@@ -319,7 +397,9 @@ class CustomPaint extends SingleChildRenderObjectWidget {
     renderObject
       ..painter = painter
       ..foregroundPainter = foregroundPainter
-      ..preferredSize = size;
+      ..preferredSize = size
+      ..isComplex = isComplex
+      ..willChange = willChange;
   }
 
   @override
@@ -392,10 +472,9 @@ class ClipRect extends SingleChildRenderObjectWidget {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    if (clipper != null)
-      description.add('clipper: $clipper');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<CustomClipper<Rect>>('clipper', clipper, defaultValue: null));
   }
 }
 
@@ -448,12 +527,10 @@ class ClipRRect extends SingleChildRenderObjectWidget {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    if (borderRadius != null)
-      description.add('$borderRadius');
-    if (clipper != null)
-      description.add('clipper: $clipper');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<BorderRadius>('borderRadius', borderRadius, showName: false, defaultValue: null));
+    description.add(new DiagnosticsProperty<CustomClipper<RRect>>('clipper', clipper, defaultValue: null));
   }
 }
 
@@ -502,10 +579,9 @@ class ClipOval extends SingleChildRenderObjectWidget {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    if (clipper != null)
-      description.add('clipper: $clipper');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<CustomClipper<Rect>>('clipper', clipper, defaultValue: null));
   }
 }
 
@@ -551,10 +627,9 @@ class ClipPath extends SingleChildRenderObjectWidget {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    if (clipper != null)
-      description.add('clipper: $clipper');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<CustomClipper<Path>>('clipper', clipper, defaultValue: null));
   }
 }
 
@@ -615,12 +690,12 @@ class PhysicalModel extends SingleChildRenderObjectWidget {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('shape: $shape');
-    description.add('borderRadius: $borderRadius');
-    description.add('elevation: ${elevation.toStringAsFixed(1)}');
-    description.add('color: $color');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new EnumProperty<BoxShape>('shape', shape));
+    description.add(new DiagnosticsProperty<BorderRadius>('borderRadius', borderRadius));
+    description.add(new DoubleProperty('elevation', elevation));
+    description.add(new DiagnosticsProperty<Color>('color', color));
   }
 }
 
@@ -1042,20 +1117,27 @@ class Padding extends SingleChildRenderObjectWidget {
        super(key: key, child: child);
 
   /// The amount of space by which to inset the child.
-  final EdgeInsets padding;
+  final EdgeInsetsGeometry padding;
 
   @override
-  RenderPadding createRenderObject(BuildContext context) => new RenderPadding(padding: padding);
-
-  @override
-  void updateRenderObject(BuildContext context, RenderPadding renderObject) {
-    renderObject.padding = padding;
+  RenderPadding createRenderObject(BuildContext context) {
+    return new RenderPadding(
+      padding: padding,
+      textDirection: Directionality.of(context),
+    );
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('padding: $padding');
+  void updateRenderObject(BuildContext context, RenderPadding renderObject) {
+    renderObject
+      ..padding = padding
+      ..textDirection = Directionality.of(context);
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<EdgeInsetsGeometry>('padding', padding));
   }
 }
 
@@ -1106,7 +1188,7 @@ class Align extends SingleChildRenderObjectWidget {
   /// edge of the parent. Other values interpolate (and extrapolate) linearly.
   /// For example, a value of 0.5 means that the center of the child is aligned
   /// with the center of the parent.
-  final FractionalOffset alignment;
+  final FractionalOffsetGeometry alignment;
 
   /// If non-null, sets its width to the child's width multipled by this factor.
   ///
@@ -1119,24 +1201,30 @@ class Align extends SingleChildRenderObjectWidget {
   final double heightFactor;
 
   @override
-  RenderPositionedBox createRenderObject(BuildContext context) => new RenderPositionedBox(alignment: alignment, widthFactor: widthFactor, heightFactor: heightFactor);
+  RenderPositionedBox createRenderObject(BuildContext context) {
+    return new RenderPositionedBox(
+      alignment: alignment,
+      widthFactor: widthFactor,
+      heightFactor: heightFactor,
+      textDirection: Directionality.of(context),
+    );
+  }
 
   @override
   void updateRenderObject(BuildContext context, RenderPositionedBox renderObject) {
     renderObject
       ..alignment = alignment
       ..widthFactor = widthFactor
-      ..heightFactor = heightFactor;
+      ..heightFactor = heightFactor
+      ..textDirection = Directionality.of(context);
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('alignment: $alignment');
-    if (widthFactor != null)
-      description.add('widthFactor: $widthFactor');
-    if (heightFactor != null)
-      description.add('heightFactor: $heightFactor');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<FractionalOffsetGeometry>('alignment', alignment));
+    description.add(new DoubleProperty('widthFactor', widthFactor, defaultValue: null));
+    description.add(new DoubleProperty('heightFactor', heightFactor, defaultValue: null));
   }
 }
 
@@ -1232,9 +1320,9 @@ class LayoutId extends ParentDataWidget<CustomMultiChildLayout> {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('id: $id');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<Object>('id', id));
   }
 }
 
@@ -1374,14 +1462,11 @@ class SizedBox extends SingleChildRenderObjectWidget {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    if (width != double.INFINITY || height != double.INFINITY) {
-      if (width != null)
-        description.add('width: $width');
-      if (height != null)
-        description.add('height: $height');
-    }
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    final bool hidden = width == double.INFINITY && height == double.INFINITY;
+    description.add(new DoubleProperty('width', width, defaultValue: null, hidden: hidden));
+    description.add(new DoubleProperty('height', height, defaultValue: null, hidden: hidden));
   }
 }
 
@@ -1438,9 +1523,9 @@ class ConstrainedBox extends SingleChildRenderObjectWidget {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('$constraints');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<BoxConstraints>('constraints', constraints, showName: false));
   }
 }
 
@@ -1463,7 +1548,7 @@ class FractionallySizedBox extends SingleChildRenderObjectWidget {
     this.alignment: FractionalOffset.center,
     this.widthFactor,
     this.heightFactor,
-    Widget child
+    Widget child,
   }) : assert(alignment != null),
        assert(widthFactor == null || widthFactor >= 0.0),
        assert(heightFactor == null || heightFactor >= 0.0),
@@ -1496,14 +1581,15 @@ class FractionallySizedBox extends SingleChildRenderObjectWidget {
   /// edge of the parent. Other values interpolate (and extrapolate) linearly.
   /// For example, a value of 0.5 means that the center of the child is aligned
   /// with the center of the parent.
-  final FractionalOffset alignment;
+  final FractionalOffsetGeometry alignment;
 
   @override
   RenderFractionallySizedOverflowBox createRenderObject(BuildContext context) {
     return new RenderFractionallySizedOverflowBox(
       alignment: alignment,
       widthFactor: widthFactor,
-      heightFactor: heightFactor
+      heightFactor: heightFactor,
+      textDirection: Directionality.of(context),
     );
   }
 
@@ -1512,17 +1598,16 @@ class FractionallySizedBox extends SingleChildRenderObjectWidget {
     renderObject
       ..alignment = alignment
       ..widthFactor = widthFactor
-      ..heightFactor = heightFactor;
+      ..heightFactor = heightFactor
+      ..textDirection = Directionality.of(context);
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('alignment: $alignment');
-    if (widthFactor != null)
-      description.add('widthFactor: $widthFactor');
-    if (heightFactor != null)
-      description.add('heightFactor: $heightFactor');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<FractionalOffsetGeometry>('alignment', alignment));
+    description.add(new DoubleProperty('widthFactor', widthFactor, defaultValue: null));
+    description.add(new DoubleProperty('heightFactor', heightFactor, defaultValue: null));
   }
 }
 
@@ -1586,12 +1671,10 @@ class LimitedBox extends SingleChildRenderObjectWidget {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    if (maxWidth != double.INFINITY)
-      description.add('maxWidth: $maxWidth');
-    if (maxHeight != double.INFINITY)
-      description.add('maxHeight: $maxHeight');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DoubleProperty('maxWidth', maxWidth, defaultValue: double.INFINITY));
+    description.add(new DoubleProperty('maxHeight', maxHeight, defaultValue: double.INFINITY));
   }
 }
 
@@ -1608,7 +1691,7 @@ class OverflowBox extends SingleChildRenderObjectWidget {
     this.maxWidth,
     this.minHeight,
     this.maxHeight,
-    Widget child
+    Widget child,
   }) : super(key: key, child: child);
 
   /// How to align the child.
@@ -1620,7 +1703,7 @@ class OverflowBox extends SingleChildRenderObjectWidget {
   /// edge of the parent. Other values interpolate (and extrapolate) linearly.
   /// For example, a value of 0.5 means that the center of the child is aligned
   /// with the center of the parent.
-  final FractionalOffset alignment;
+  final FractionalOffsetGeometry alignment;
 
   /// The minimum width constraint to give the child. Set this to null (the
   /// default) to use the constraint from the parent instead.
@@ -1645,7 +1728,8 @@ class OverflowBox extends SingleChildRenderObjectWidget {
       minWidth: minWidth,
       maxWidth: maxWidth,
       minHeight: minHeight,
-      maxHeight: maxHeight
+      maxHeight: maxHeight,
+      textDirection: Directionality.of(context),
     );
   }
 
@@ -1656,21 +1740,18 @@ class OverflowBox extends SingleChildRenderObjectWidget {
       ..minWidth = minWidth
       ..maxWidth = maxWidth
       ..minHeight = minHeight
-      ..maxHeight = maxHeight;
+      ..maxHeight = maxHeight
+      ..textDirection = Directionality.of(context);
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('alignment: $alignment');
-    if (minWidth != null)
-      description.add('minWidth: $minWidth');
-    if (maxWidth != null)
-      description.add('maxWidth: $maxWidth');
-    if (minHeight != null)
-      description.add('minHeight: $minHeight');
-    if (maxHeight != null)
-      description.add('maxHeight: $maxHeight');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<FractionalOffsetGeometry>('alignment', alignment));
+    description.add(new DoubleProperty('minWidth', minWidth, defaultValue: null));
+    description.add(new DoubleProperty('maxWidth', maxWidth, defaultValue: null));
+    description.add(new DoubleProperty('minHeight', minHeight, defaultValue: null));
+    description.add(new DoubleProperty('maxHeight', maxHeight, defaultValue: null));
   }
 }
 
@@ -1684,7 +1765,7 @@ class SizedOverflowBox extends SingleChildRenderObjectWidget {
     Key key,
     @required this.size,
     this.alignment: FractionalOffset.center,
-    Widget child
+    Widget child,
   }) : assert(size != null),
        assert(alignment != null),
        super(key: key, child: child);
@@ -1698,7 +1779,7 @@ class SizedOverflowBox extends SingleChildRenderObjectWidget {
   /// edge of the parent. Other values interpolate (and extrapolate) linearly.
   /// For example, a value of 0.5 means that the center of the child is aligned
   /// with the center of the parent.
-  final FractionalOffset alignment;
+  final FractionalOffsetGeometry alignment;
 
   /// The size this widget should attempt to be.
   final Size size;
@@ -1707,7 +1788,8 @@ class SizedOverflowBox extends SingleChildRenderObjectWidget {
   RenderSizedOverflowBox createRenderObject(BuildContext context) {
     return new RenderSizedOverflowBox(
       alignment: alignment,
-      requestedSize: size
+      requestedSize: size,
+      textDirection: Directionality.of(context),
     );
   }
 
@@ -1715,15 +1797,15 @@ class SizedOverflowBox extends SingleChildRenderObjectWidget {
   void updateRenderObject(BuildContext context, RenderSizedOverflowBox renderObject) {
     renderObject
       ..alignment = alignment
-      ..requestedSize = size;
+      ..requestedSize = size
+      ..textDirection = Directionality.of(context);
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('alignment: $alignment');
-    if (size != null)
-      description.add('size: $size');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<FractionalOffsetGeometry>('alignment', alignment));
+    description.add(new DiagnosticsProperty<Size>('size', size, defaultValue: null));
   }
 }
 
@@ -1754,9 +1836,9 @@ class Offstage extends SingleChildRenderObjectWidget {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('offstage: $offstage');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<bool>('offstage', offstage));
   }
 
   @override
@@ -1770,9 +1852,9 @@ class _OffstageElement extends SingleChildRenderObjectElement {
   Offstage get widget => super.widget;
 
   @override
-  void visitChildrenForSemantics(ElementVisitor visitor) {
+  void debugVisitOnstageChildren(ElementVisitor visitor) {
     if (!widget.offstage)
-      super.visitChildrenForSemantics(visitor);
+      super.debugVisitOnstageChildren(visitor);
   }
 }
 
@@ -1828,9 +1910,9 @@ class AspectRatio extends SingleChildRenderObjectWidget {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('aspectRatio: $aspectRatio');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DoubleProperty('aspectRatio', aspectRatio));
   }
 }
 
@@ -1996,20 +2078,27 @@ class SliverPadding extends SingleChildRenderObjectWidget {
        super(key: key, child: sliver);
 
   /// The amount of space by which to inset the child sliver.
-  final EdgeInsets padding;
+  final EdgeInsetsGeometry padding;
 
   @override
-  RenderSliverPadding createRenderObject(BuildContext context) => new RenderSliverPadding(padding: padding);
-
-  @override
-  void updateRenderObject(BuildContext context, RenderSliverPadding renderObject) {
-    renderObject.padding = padding;
+  RenderSliverPadding createRenderObject(BuildContext context) {
+    return new RenderSliverPadding(
+      padding: padding,
+      textDirection: Directionality.of(context),
+    );
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('padding: $padding');
+  void updateRenderObject(BuildContext context, RenderSliverPadding renderObject) {
+    renderObject
+      ..padding = padding
+      ..textDirection = Directionality.of(context);
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<EdgeInsetsGeometry>('padding', padding));
   }
 }
 
@@ -2104,7 +2193,8 @@ class Stack extends MultiChildRenderObjectWidget {
   /// top left corners.
   Stack({
     Key key,
-    this.alignment: FractionalOffset.topLeft,
+    this.alignment: FractionalOffsetDirectional.topStart,
+    this.textDirection,
     this.fit: StackFit.loose,
     this.overflow: Overflow.clip,
     List<Widget> children: const <Widget>[],
@@ -2116,7 +2206,12 @@ class Stack extends MultiChildRenderObjectWidget {
   /// the points determined by [alignment] are co-located. For example, if the
   /// [alignment] is [FractionalOffset.topLeft], then the top left corner of
   /// each non-positioned child will be located at the same global coordinate.
-  final FractionalOffset alignment;
+  final FractionalOffsetGeometry alignment;
+
+  /// The text direction with which to resolve [alignment].
+  ///
+  /// Defaults to the ambient [Directionality].
+  final TextDirection textDirection;
 
   /// How to size the non-positioned children in the stack.
   ///
@@ -2135,6 +2230,7 @@ class Stack extends MultiChildRenderObjectWidget {
   RenderStack createRenderObject(BuildContext context) {
     return new RenderStack(
       alignment: alignment,
+      textDirection: textDirection ?? Directionality.of(context),
       fit: fit,
       overflow: overflow,
     );
@@ -2144,16 +2240,18 @@ class Stack extends MultiChildRenderObjectWidget {
   void updateRenderObject(BuildContext context, RenderStack renderObject) {
     renderObject
       ..alignment = alignment
+      ..textDirection = textDirection ?? Directionality.of(context)
       ..fit = fit
       ..overflow = overflow;
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('alignment: $alignment');
-    description.add('fit: $fit');
-    description.add('overflow: $overflow');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<FractionalOffsetGeometry>('alignment', alignment));
+    description.add(new EnumProperty<TextDirection>('textDirection', textDirection, defaultValue: null));
+    description.add(new EnumProperty<StackFit>('fit', fit));
+    description.add(new EnumProperty<Overflow>('overflow', overflow));
   }
 }
 
@@ -2171,23 +2269,31 @@ class IndexedStack extends Stack {
   /// The [index] argument must not be null.
   IndexedStack({
     Key key,
-    FractionalOffset alignment: FractionalOffset.topLeft,
+    FractionalOffsetGeometry alignment: FractionalOffsetDirectional.topStart,
+    TextDirection textDirection,
     StackFit sizing: StackFit.loose,
     this.index: 0,
     List<Widget> children: const <Widget>[],
-  }) : super(key: key, alignment: alignment, fit: sizing, children: children);
+  }) : super(key: key, alignment: alignment, textDirection: textDirection, fit: sizing, children: children);
 
   /// The index of the child to show.
   final int index;
 
   @override
-  RenderIndexedStack createRenderObject(BuildContext context) => new RenderIndexedStack(index: index, alignment: alignment);
+  RenderIndexedStack createRenderObject(BuildContext context) {
+    return new RenderIndexedStack(
+      index: index,
+      alignment: alignment,
+      textDirection: textDirection ?? Directionality.of(context),
+    );
+  }
 
   @override
   void updateRenderObject(BuildContext context, RenderIndexedStack renderObject) {
     renderObject
       ..index = index
-      ..alignment = alignment;
+      ..alignment = alignment
+      ..textDirection = textDirection ?? Directionality.of(context);
   }
 }
 
@@ -2209,6 +2315,10 @@ class IndexedStack extends Stack {
 /// force the child to have a particular width. Alternatively the [width] and
 /// [height] properties can be used to give the dimensions, with one
 /// corresponding position property (e.g. [top] and [height]).
+///
+/// See also:
+///
+///  * [PositionedDirectional], which adapts to the ambient [Directionality].
 class Positioned extends ParentDataWidget<Stack> {
   /// Creates a widget that controls where a child of a [Stack] is positioned.
   ///
@@ -2216,6 +2326,11 @@ class Positioned extends ParentDataWidget<Stack> {
   /// [width]), and only two out of the three vertical values ([top],
   /// [bottom], [height]), can be set. In each case, at least one of
   /// the three must be null.
+  ///
+  /// See also:
+  ///
+  ///  * [Positioned.directional], which specifies the widget's horizontal
+  ///    position using [start] and [end] rather than [left] and [right].
   const Positioned({
     Key key,
     this.left,
@@ -2224,7 +2339,7 @@ class Positioned extends ParentDataWidget<Stack> {
     this.bottom,
     this.width,
     this.height,
-    @required Widget child
+    @required Widget child,
   }) : assert(left == null || right == null || width == null),
        assert(top == null || bottom == null || height == null),
        super(key: key, child: child);
@@ -2274,6 +2389,60 @@ class Positioned extends ParentDataWidget<Stack> {
   }) : width = null,
        height = null,
        super(key: key, child: child);
+
+  /// Creates a widget that controls where a child of a [Stack] is positioned.
+  ///
+  /// Only two out of the three horizontal values (`start`, `end`,
+  /// [width]), and only two out of the three vertical values ([top],
+  /// [bottom], [height]), can be set. In each case, at least one of
+  /// the three must be null.
+  ///
+  /// If `textDirection` is [TextDirection.rtl], then the `start` argument is
+  /// used for the [right] property and the `end` argument is used for the
+  /// [left] property. Otherwise, if `textDirection` is [TextDirection.ltr],
+  /// then the `start` argument is used for the [left] property and the `end`
+  /// argument is used for the [right] property.
+  ///
+  /// The `textDirection` argument must not be null.
+  ///
+  /// See also:
+  ///
+  ///  * [PositionedDirectional], which adapts to the ambient [Directionality].
+  factory Positioned.directional({
+    Key key,
+    @required TextDirection textDirection,
+    double start,
+    double top,
+    double end,
+    double bottom,
+    double width,
+    double height,
+    @required Widget child,
+  }) {
+    assert(textDirection != null);
+    double left;
+    double right;
+    switch (textDirection) {
+      case TextDirection.rtl:
+        left = end;
+        right = start;
+        break;
+      case TextDirection.ltr:
+        left = start;
+        right = end;
+        break;
+    }
+    return new Positioned(
+      key: key,
+      left: left,
+      top: top,
+      right: right,
+      bottom: bottom,
+      width: width,
+      height: height,
+      child: child,
+    );
+  }
 
   /// The distance that the child's left edge is inset from the left of the stack.
   ///
@@ -2355,20 +2524,122 @@ class Positioned extends ParentDataWidget<Stack> {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    if (left != null)
-      description.add('left: $left');
-    if (top != null)
-      description.add('top: $top');
-    if (right != null)
-      description.add('right: $right');
-    if (bottom != null)
-      description.add('bottom: $bottom');
-    if (width != null)
-      description.add('width: $width');
-    if (height != null)
-      description.add('height: $height');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DoubleProperty('left', left, defaultValue: null));
+    description.add(new DoubleProperty('top', top, defaultValue: null));
+    description.add(new DoubleProperty('right', right, defaultValue: null));
+    description.add(new DoubleProperty('bottom', bottom, defaultValue: null));
+    description.add(new DoubleProperty('width', width, defaultValue: null));
+    description.add(new DoubleProperty('height', height, defaultValue: null));
+  }
+}
+
+/// A widget that controls where a child of a [Stack] is positioned without
+/// committing to a specific [TextDirection].
+///
+/// The ambient [Directionality] is used to determine whether [start] is to the
+/// left or to the right.
+///
+/// A [PositionedDirectional] widget must be a descendant of a [Stack], and the
+/// path from the [PositionedDirectional] widget to its enclosing [Stack] must
+/// contain only [StatelessWidget]s or [StatefulWidget]s (not other kinds of
+/// widgets, like [RenderObjectWidget]s).
+///
+/// If a widget is wrapped in a [PositionedDirectional], then it is a
+/// _positioned_ widget in its [Stack]. If the [top] property is non-null, the
+/// top edge of this child/ will be positioned [top] layout units from the top
+/// of the stack widget. The [start], [bottom], and [end] properties work
+/// analogously.
+///
+/// If both the [top] and [bottom] properties are non-null, then the child will
+/// be forced to have exactly the height required to satisfy both constraints.
+/// Similarly, setting the [start] and [end] properties to non-null values will
+/// force the child to have a particular width. Alternatively the [width] and
+/// [height] properties can be used to give the dimensions, with one
+/// corresponding position property (e.g. [top] and [height]).
+///
+/// See also:
+///
+///  * [Positioned], which specifies the widget's position visually.
+///  * [Positioned.directional], which also specifies the widget's horizontal
+///    position using [start] and [end] but has an explicit [TextDirection].
+class PositionedDirectional extends StatelessWidget {
+  /// Creates a widget that controls where a child of a [Stack] is positioned.
+  ///
+  /// Only two out of the three horizontal values (`start`, `end`,
+  /// [width]), and only two out of the three vertical values ([top],
+  /// [bottom], [height]), can be set. In each case, at least one of
+  /// the three must be null.
+  ///
+  /// See also:
+  ///
+  ///  * [Positioned.directional], which also specifies the widget's horizontal
+  ///    position using [start] and [end] but has an explicit [TextDirection].
+  const PositionedDirectional({
+    Key key,
+    this.start,
+    this.top,
+    this.end,
+    this.bottom,
+    this.width,
+    this.height,
+    @required this.child,
+  }) : super(key: key);
+
+  /// The distance that the child's leading edge is inset from the leading edge
+  /// of the stack.
+  ///
+  /// Only two out of the three horizontal values ([start], [end], [width]) can be
+  /// set. The third must be null.
+  final double start;
+
+  /// The distance that the child's top edge is inset from the top of the stack.
+  ///
+  /// Only two out of the three vertical values ([top], [bottom], [height]) can be
+  /// set. The third must be null.
+  final double top;
+
+  /// The distance that the child's trailing edge is inset from the trailing
+  /// edge of the stack.
+  ///
+  /// Only two out of the three horizontal values ([start], [end], [width]) can be
+  /// set. The third must be null.
+  final double end;
+
+  /// The distance that the child's bottom edge is inset from the bottom of the stack.
+  ///
+  /// Only two out of the three vertical values ([top], [bottom], [height]) can be
+  /// set. The third must be null.
+  final double bottom;
+
+  /// The child's width.
+  ///
+  /// Only two out of the three horizontal values ([start], [end], [width]) can be
+  /// set. The third must be null.
+  final double width;
+
+  /// The child's height.
+  ///
+  /// Only two out of the three vertical values ([top], [bottom], [height]) can be
+  /// set. The third must be null.
+  final double height;
+
+  /// The widget below this widget in the tree.
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return new Positioned.directional(
+      textDirection: Directionality.of(context),
+      start: start,
+      top: top,
+      end: end,
+      bottom: bottom,
+      width: width,
+      height: height,
+      child: child,
+    );
   }
 }
 
@@ -2441,22 +2712,31 @@ class Flex extends MultiChildRenderObjectWidget {
   ///
   /// The [direction] is required.
   ///
-  /// The [direction], [mainAxisAlignment], and [crossAxisAlignment] arguments
-  /// must not be null. If [crossAxisAlignment] is
+  /// The [direction], [mainAxisAlignment], [crossAxisAlignment], and
+  /// [verticalDirection] arguments must not be null. If [crossAxisAlignment] is
   /// [CrossAxisAlignment.baseline], then [textBaseline] must not be null.
+  ///
+  /// The [textDirection] argument defaults to the ambient [Directionality], if
+  /// any. If there is no ambient directionality, and a text direction is going
+  /// to be necessary to decide which direction to lay the children in or to
+  /// disambiguate `start` or `end` values for the main or cross axis
+  /// directions, the [textDirection] must not be null.
   Flex({
     Key key,
     @required this.direction,
     this.mainAxisAlignment: MainAxisAlignment.start,
     this.mainAxisSize: MainAxisSize.max,
     this.crossAxisAlignment: CrossAxisAlignment.center,
+    this.textDirection,
+    this.verticalDirection: VerticalDirection.down,
     this.textBaseline,
     List<Widget> children: const <Widget>[],
   }) : assert(direction != null),
        assert(mainAxisAlignment != null),
        assert(mainAxisSize != null),
        assert(crossAxisAlignment != null),
-       assert(crossAxisAlignment != CrossAxisAlignment.baseline || textBaseline != null),// https://github.com/dart-lang/sdk/issues/29278
+       assert(verticalDirection != null),
+       assert(crossAxisAlignment != CrossAxisAlignment.baseline || textBaseline != null),
        super(key: key, children: children);
 
   /// The direction to use as the main axis.
@@ -2492,8 +2772,87 @@ class Flex extends MultiChildRenderObjectWidget {
   /// children in the cross axis (e.g., horizontally for a [Column]).
   final CrossAxisAlignment crossAxisAlignment;
 
+  /// Determines the order to lay children out horizontally and how to interpret
+  /// `start` and `end` in the horizontal direction.
+  ///
+  /// Defaults to the ambient [Directionality].
+  ///
+  /// If the [direction] is [Axis.horizontal], this controls the order in which
+  /// the children are positioned (left-to-right or right-to-left), and the
+  /// meaning of the [mainAxisAlignment] property's [MainAxisAlignment.start] and
+  /// [MainAxisAlignment.end] values.
+  ///
+  /// If the [direction] is [Axis.horizontal], and either the
+  /// [mainAxisAlignment] is either [MainAxisAlignment.start] or
+  /// [MainAxisAlignment.end], or there's more than one child, then the
+  /// [textDirection] (or the ambient [Directionality]) must not be null.
+  ///
+  /// If the [direction] is [Axis.vertical], this controls the meaning of the
+  /// [crossAxisAlignment] property's [CrossAxisAlignment.start] and
+  /// [CrossAxisAlignment.end] values.
+  ///
+  /// If the [direction] is [Axis.vertical], and the [crossAxisAlignment] is
+  /// either [CrossAxisAlignment.start] or [CrossAxisAlignment.end], then the
+  /// [textDirection] (or the ambient [Directionality]) must not be null.
+  final TextDirection textDirection;
+
+  /// Determines the order to lay children out vertically and how to interpret
+  /// `start` and `end` in the vertical direction.
+  ///
+  /// Defaults to [VerticalDirection.down].
+  ///
+  /// If the [direction] is [Axis.vertical], this controls which order children
+  /// are painted in (down or up), the meaning of the [mainAxisAlignment]
+  /// property's [MainAxisAlignment.start] and [MainAxisAlignment.end] values.
+  ///
+  /// If the [direction] is [Axis.vertical], and either the [mainAxisAlignment]
+  /// is either [MainAxisAlignment.start] or [MainAxisAlignment.end], or there's
+  /// more than one child, then the [verticalDirection] must not be null.
+  ///
+  /// If the [direction] is [Axis.horizontal], this controls the meaning of the
+  /// [crossAxisAlignment] property's [CrossAxisAlignment.start] and
+  /// [CrossAxisAlignment.end] values.
+  ///
+  /// If the [direction] is [Axis.horizontal], and the [crossAxisAlignment] is
+  /// either [CrossAxisAlignment.start] or [CrossAxisAlignment.end], then the
+  /// [verticalDirection] must not be null.
+  final VerticalDirection verticalDirection;
+
   /// If aligning items according to their baseline, which baseline to use.
   final TextBaseline textBaseline;
+
+  bool get _needTextDirection {
+    assert(direction != null);
+    switch (direction) {
+      case Axis.horizontal:
+        return true; // because it affects the layout order.
+      case Axis.vertical:
+        assert(crossAxisAlignment != null);
+        return crossAxisAlignment == CrossAxisAlignment.start
+            || crossAxisAlignment == CrossAxisAlignment.end;
+    }
+    return null;
+  }
+
+  /// The value to pass to [RenderFlex.textDirection].
+  ///
+  /// This value is derived from the [textDirection] property and the ambient
+  /// [Directionality]. The value is null if there is no need to specify the
+  /// text direction. In practice there's always a need to specify the direction
+  /// except for vertical flexes (e.g. [Column]s) whose [crossAxisAlignment] is
+  /// not dependent on the text direction (not `start` or `end`). In particular,
+  /// a [Row] always needs a text direction because the text direction controls
+  /// its layout order. (For [Column]s, the layout order is controlled by
+  /// [verticalDirection], which is always specified as it does not depend on an
+  /// inherited widget and defaults to [VerticalDirection.down].)
+  ///
+  /// This method exists so that subclasses of [Flex] that create their own
+  /// render objects that are derived from [RenderFlex] can do so and still use
+  /// the logic for providing a text direction only when it is necessary.
+  @protected
+  TextDirection getEffectiveTextDirection(BuildContext context) {
+    return textDirection ?? (_needTextDirection ? Directionality.of(context) : null);
+  }
 
   @override
   RenderFlex createRenderObject(BuildContext context) {
@@ -2502,7 +2861,9 @@ class Flex extends MultiChildRenderObjectWidget {
       mainAxisAlignment: mainAxisAlignment,
       mainAxisSize: mainAxisSize,
       crossAxisAlignment: crossAxisAlignment,
-      textBaseline: textBaseline
+      textDirection: getEffectiveTextDirection(context),
+      verticalDirection: verticalDirection,
+      textBaseline: textBaseline,
     );
   }
 
@@ -2513,7 +2874,21 @@ class Flex extends MultiChildRenderObjectWidget {
       ..mainAxisAlignment = mainAxisAlignment
       ..mainAxisSize = mainAxisSize
       ..crossAxisAlignment = crossAxisAlignment
+      ..textDirection = getEffectiveTextDirection(context)
+      ..verticalDirection = verticalDirection
       ..textBaseline = textBaseline;
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new EnumProperty<Axis>('direction', direction));
+    description.add(new EnumProperty<MainAxisAlignment>('mainAxisAlignment', mainAxisAlignment));
+    description.add(new EnumProperty<MainAxisSize>('mainAxisSize', mainAxisSize, defaultValue: MainAxisSize.max));
+    description.add(new EnumProperty<CrossAxisAlignment>('crossAxisAlignment', crossAxisAlignment));
+    description.add(new EnumProperty<TextDirection>('textDirection', textDirection, defaultValue: null));
+    description.add(new EnumProperty<VerticalDirection>('verticalDirection', verticalDirection, defaultValue: VerticalDirection.down));
+    description.add(new EnumProperty<TextBaseline>('textBaseline', textBaseline, defaultValue: null));
   }
 }
 
@@ -2559,12 +2934,15 @@ class Flex extends MultiChildRenderObjectWidget {
 ///
 /// ## Troubleshooting
 ///
-/// ### Why is my row turning red?
+/// ### Why does my row have a yellow and black warning stripe?
 ///
-/// If the contents of the row overflow, meaning that together they are wider
-/// than the row, then the row runs out of space to give its [Expanded] and
-/// [Flexible] children, and reports this by drawing a red warning box on the
-/// edge that is overflowing.
+/// If the non-flexible contents of the row (those that are not wrapped in
+/// [Expanded] or [Flexible] widgets) are together wider than the row itself,
+/// then the row is said to have overflowed. When a row overflows, the row does
+/// not have any remaining space to share between its [Expanded] and [Flexible]
+/// children. The row reports this by drawing a yellow and black striped
+/// warning box on the edge that is overflowing. If there is room on the outside
+/// of the row, the amount of overflow is printed in red lettering.
 ///
 /// #### Story time
 ///
@@ -2590,7 +2968,7 @@ class Flex extends MultiChildRenderObjectWidget {
 /// be thiiiiiiiiiiiiiiiiiiiis wide.", and goes well beyond the space that the
 /// row has available, not wrapping. The row responds, "That's not fair, now I
 /// have no more room available for my other children!", and gets angry and
-/// turns red.
+/// sprouts a yellow and black strip.
 ///
 /// The fix is to wrap the second child in an [Expanded] widget, which tells the
 /// row that the child should be given the remaining room:
@@ -2662,14 +3040,24 @@ class Flex extends MultiChildRenderObjectWidget {
 class Row extends Flex {
   /// Creates a horizontal array of children.
   ///
-  /// The [direction], [mainAxisAlignment], [mainAxisSize], and
-  /// [crossAxisAlignment] arguments must not be null. If [crossAxisAlignment]
-  /// is [CrossAxisAlignment.baseline], then [textBaseline] must not be null.
+  /// The [direction], [mainAxisAlignment], [mainAxisSize],
+  /// [crossAxisAlignment], and [verticalDirection] arguments must not be null.
+  /// If [crossAxisAlignment] is [CrossAxisAlignment.baseline], then
+  /// [textBaseline] must not be null.
+  ///
+  /// The [textDirection] argument defaults to the ambient [Directionality], if
+  /// any. If there is no ambient directionality, and a text direction is going
+  /// to be necessary to determine the layout order (which is always the case
+  /// unless the row has no children or only one child) or to disambiguate
+  /// `start` or `end` values for the [mainAxisDirection], the [textDirection]
+  /// must not be null.
   Row({
     Key key,
     MainAxisAlignment mainAxisAlignment: MainAxisAlignment.start,
     MainAxisSize mainAxisSize: MainAxisSize.max,
     CrossAxisAlignment crossAxisAlignment: CrossAxisAlignment.center,
+    TextDirection textDirection,
+    VerticalDirection verticalDirection: VerticalDirection.down,
     TextBaseline textBaseline,
     List<Widget> children: const <Widget>[],
   }) : super(
@@ -2679,7 +3067,9 @@ class Row extends Flex {
     mainAxisAlignment: mainAxisAlignment,
     mainAxisSize: mainAxisSize,
     crossAxisAlignment: crossAxisAlignment,
-    textBaseline: textBaseline
+    textDirection: textDirection,
+    verticalDirection: verticalDirection,
+    textBaseline: textBaseline,
   );
 }
 
@@ -2740,6 +3130,58 @@ class Row extends Flex {
 /// )
 /// ```
 ///
+/// ## Troubleshooting
+///
+/// ### When the incoming vertical constraints are unbounded
+///
+/// When a [Column] has one or more [Expanded] or [Flexible] children, and is
+/// placed in another [Column], or in a [ListView], or in some other context
+/// that does not provide a maximum height constraint for the [Column], you will
+/// get an exception at runtime saying that there are children with non-zero
+/// flex but the vertical constraints are unbounded.
+///
+/// The problem, as described in the details that accompany that exception, is
+/// that using [Flexible] or [Expanded] means that the remaining space after
+/// laying out all the other children must be shared equally, but if the
+/// incoming vertical constraints are unbounded, there is infinite remaining
+/// space.
+///
+/// The key to solving this problem is usually to determine why the [Column] is
+/// receiving unbounded vertical constraints.
+///
+/// One common reason for this to happen is that the [Column] has been placed in
+/// another [Column] (without using [Expanded] or [Flexible] around the inner
+/// nested [Column]). When a [Column] lays out its non-flex children (those that
+/// have neither [Expanded] or [Flexible] around them), it gives them unbounded
+/// constraints so that they can determine their own dimensions (passing
+/// unbounded constraints usually signals to the child that it should
+/// shrink-wrap its contents). The solution in this case is typically to just
+/// wrap the inner column in an [Expanded] to indicate that it should take the
+/// remaining space of the outer column, rather than being allowed to take any
+/// amount of room it desires.
+///
+/// Another reason for this message to be displayed is nesting a [Column] inside
+/// a [ListView] or other vertical scrollable. In that scenario, there really is
+/// infinite vertical space (the whole point of a vertical scrolling list is to
+/// allow infinite space vertically). In such scenarios, it is usually worth
+/// examining why the inner [Column] should have an [Expanded] or [Flexible]
+/// child: what size should the inner children really be? The solution in this
+/// case is typically to remove the [Expanded] or [Flexible] widgets from around
+/// the inner children.
+///
+/// For more discussion about constraints, see [BoxConstraints].
+///
+/// ### The yellow and black striped banner
+///
+/// When the contents of a [Column] exceed the amount of space available, the
+/// [Column] overflows, and the contents are clipped. In debug mode, a yellow
+/// and black striped bar is rendered at the overflowing edge to indicate the
+/// problem, and a message is printed below the [Column] saying how much
+/// overflow was detected.
+///
+/// The usual solution is to use a [ListView] rather than a [Column], to enable
+/// the contents to scroll when vertical space is limited.
+///
 /// ## Layout algorithm
 ///
 /// _This section describes how a [Column] is rendered by the framework._
@@ -2789,14 +3231,22 @@ class Row extends Flex {
 class Column extends Flex {
   /// Creates a vertical array of children.
   ///
-  /// The [direction], [mainAxisAlignment], [mainAxisSize], and
-  /// [crossAxisAlignment] arguments must not be null. If [crossAxisAlignment]
-  /// is [CrossAxisAlignment.baseline], then [textBaseline] must not be null.
+  /// The [direction], [mainAxisAlignment], [mainAxisSize],
+  /// [crossAxisAlignment], and [verticalDirection] arguments must not be null.
+  /// If [crossAxisAlignment] is [CrossAxisAlignment.baseline], then
+  /// [textBaseline] must not be null.
+  ///
+  /// The [textDirection] argument defaults to the ambient [Directionality], if
+  /// any. If there is no ambient directionality, and a text direction is going
+  /// to be necessary to disambiguate `start` or `end` values for the
+  /// [crossAxisDirection], the [textDirection] must not be null.
   Column({
     Key key,
     MainAxisAlignment mainAxisAlignment: MainAxisAlignment.start,
     MainAxisSize mainAxisSize: MainAxisSize.max,
     CrossAxisAlignment crossAxisAlignment: CrossAxisAlignment.center,
+    TextDirection textDirection,
+    VerticalDirection verticalDirection: VerticalDirection.down,
     TextBaseline textBaseline,
     List<Widget> children: const <Widget>[],
   }) : super(
@@ -2806,7 +3256,9 @@ class Column extends Flex {
     mainAxisAlignment: mainAxisAlignment,
     mainAxisSize: mainAxisSize,
     crossAxisAlignment: crossAxisAlignment,
-    textBaseline: textBaseline
+    textDirection: textDirection,
+    verticalDirection: verticalDirection,
+    textBaseline: textBaseline,
   );
 }
 
@@ -2877,9 +3329,9 @@ class Flexible extends ParentDataWidget<Flex> {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('flex: $flex');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new IntProperty('flex', flex));
   }
 }
 
@@ -2961,6 +3413,12 @@ class Wrap extends MultiChildRenderObjectWidget {
   ///
   /// By default, the wrap layout is horizontal and both the children and the
   /// runs are aligned to the start.
+  ///
+  /// The [textDirection] argument defaults to the ambient [Directionality], if
+  /// any. If there is no ambient directionality, and a text direction is going
+  /// to be necessary to decide which direction to lay the children in or to
+  /// disambiguate `start` or `end` values for the main or cross axis
+  /// directions, the [textDirection] must not be null.
   Wrap({
     Key key,
     this.direction: Axis.horizontal,
@@ -2969,6 +3427,8 @@ class Wrap extends MultiChildRenderObjectWidget {
     this.runAlignment: WrapAlignment.start,
     this.runSpacing: 0.0,
     this.crossAxisAlignment: WrapCrossAlignment.start,
+    this.textDirection,
+    this.verticalDirection: VerticalDirection.down,
     List<Widget> children: const <Widget>[],
   }) : super(key: key, children: children);
 
@@ -3052,6 +3512,58 @@ class Wrap extends MultiChildRenderObjectWidget {
   ///    other in the cross axis.
   final WrapCrossAlignment crossAxisAlignment;
 
+  /// Determines the order to lay children out horizontally and how to interpret
+  /// `start` and `end` in the horizontal direction.
+  ///
+  /// Defaults to the ambient [Directionality].
+  ///
+  /// If the [direction] is [Axis.horizontal], this controls order in which the
+  /// children are positioned (left-to-right or right-to-left), and the meaning
+  /// of the [alignment] property's [WrapAlignment.start] and
+  /// [WrapAlignment.end] values.
+  ///
+  /// If the [direction] is [Axis.horizontal], and either the
+  /// [alignment] is either [WrapAlignment.start] or [WrapAlignment.end], or
+  /// there's more than one child, then the [textDirection] (or the ambient
+  /// [Directionality]) must not be null.
+  ///
+  /// If the [direction] is [Axis.vertical], this controls the order in which
+  /// runs are positioned, the meaning of the [runAlignment] property's
+  /// [WrapAlignment.start] and [WrapAlignment.end] values, as well as the
+  /// [crossAxisAlignment] property's [WrapCrossAlignment.start] and
+  /// [WrapCrossAlignment.end] values.
+  ///
+  /// If the [direction] is [Axis.vertical], and either the
+  /// [runAlignment] is either [WrapAlignment.start] or [WrapAlignment.end], the
+  /// [crossAxisAlignment] is either [WrapCrossAlignment.start] or
+  /// [WrapCrossAlignment.end], or there's more than one child, then the
+  /// [textDirection] (or the ambient [Directionality]) must not be null.
+  final TextDirection textDirection;
+
+  /// Determines the order to lay children out vertically and how to interpret
+  /// `start` and `end` in the vertical direction.
+  ///
+  /// If the [direction] is [Axis.vertical], this controls which order children
+  /// are painted in (down or up), the meaning of the [alignment] property's
+  /// [WrapAlignment.start] and [WrapAlignment.end] values.
+  ///
+  /// If the [direction] is [Axis.vertical], and either the [alignment]
+  /// is either [WrapAlignment.start] or [WrapAlignment.end], or there's
+  /// more than one child, then the [verticalDirection] must not be null.
+  ///
+  /// If the [direction] is [Axis.horizontal], this controls the order in which
+  /// runs are positioned, the meaning of the [runAlignment] property's
+  /// [WrapAlignment.start] and [WrapAlignment.end] values, as well as the
+  /// [crossAxisAlignment] property's [WrapCrossAlignment.start] and
+  /// [WrapCrossAlignment.end] values.
+  ///
+  /// If the [direction] is [Axis.horizontal], and either the
+  /// [runAlignment] is either [WrapAlignment.start] or [WrapAlignment.end], the
+  /// [crossAxisAlignment] is either [WrapCrossAlignment.start] or
+  /// [WrapCrossAlignment.end], or there's more than one child, then the
+  /// [verticalDirection] must not be null.
+  final VerticalDirection verticalDirection;
+
   @override
   RenderWrap createRenderObject(BuildContext context) {
     return new RenderWrap(
@@ -3061,6 +3573,8 @@ class Wrap extends MultiChildRenderObjectWidget {
       runAlignment: runAlignment,
       runSpacing: runSpacing,
       crossAxisAlignment: crossAxisAlignment,
+      textDirection: textDirection ?? Directionality.of(context),
+      verticalDirection: verticalDirection,
     );
   }
 
@@ -3072,7 +3586,22 @@ class Wrap extends MultiChildRenderObjectWidget {
       ..spacing = spacing
       ..runAlignment = runAlignment
       ..runSpacing = runSpacing
-      ..crossAxisAlignment = crossAxisAlignment;
+      ..crossAxisAlignment = crossAxisAlignment
+      ..textDirection = textDirection ?? Directionality.of(context)
+      ..verticalDirection = verticalDirection;
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new EnumProperty<Axis>('direction', direction));
+    description.add(new EnumProperty<WrapAlignment>('alignment', alignment));
+    description.add(new DoubleProperty('spacing', spacing));
+    description.add(new EnumProperty<WrapAlignment>('runAlignment', runAlignment));
+    description.add(new DoubleProperty('runSpacing', runSpacing));
+    description.add(new DoubleProperty('crossAxisAlignment', runSpacing));
+    description.add(new EnumProperty<TextDirection>('textDirection', textDirection, defaultValue: null));
+    description.add(new EnumProperty<VerticalDirection>('verticalDirection', verticalDirection, defaultValue: VerticalDirection.down));
   }
 }
 
@@ -3192,20 +3721,25 @@ class Flow extends MultiChildRenderObjectWidget {
 class RichText extends LeafRenderObjectWidget {
   /// Creates a paragraph of rich text.
   ///
-  /// The [text], [softWrap], [overflow], nad [textScaleFactor] arguments must
-  /// not be null.
+  /// The [text], [textAlign], [softWrap], [overflow], nad [textScaleFactor]
+  /// arguments must not be null.
   ///
   /// The [maxLines] property may be null (and indeed defaults to null), but if
   /// it is not null, it must be greater than zero.
+  ///
+  /// The [textDirection], if null, defaults to the ambient [Directionality],
+  /// which in that case must not be null.
   const RichText({
     Key key,
     @required this.text,
-    this.textAlign,
+    this.textAlign: TextAlign.start,
+    this.textDirection,
     this.softWrap: true,
     this.overflow: TextOverflow.clip,
     this.textScaleFactor: 1.0,
     this.maxLines,
   }) : assert(text != null),
+       assert(textAlign != null),
        assert(softWrap != null),
        assert(overflow != null),
        assert(textScaleFactor != null),
@@ -3217,6 +3751,22 @@ class RichText extends LeafRenderObjectWidget {
 
   /// How the text should be aligned horizontally.
   final TextAlign textAlign;
+
+  /// The directionality of the text.
+  ///
+  /// This decides how [textAlign] values like [TextAlign.start] and
+  /// [TextAlign.end] are interpreted.
+  ///
+  /// This is also used to disambiguate how to render bidirectional text. For
+  /// example, if the [text] is an English phrase followed by a Hebrew phrase,
+  /// in a [TextDirection.ltr] context the English phrase will be on the left
+  /// and the Hebrew phrase to its right, while in a [TextDirection.rtl]
+  /// context, the English phrase will be on the right and the Hebrow phrase on
+  /// its left.
+  ///
+  /// Defaults to the ambient [Directionality], if any. If there is no ambient
+  /// [Directionality], then this must not be null.
+  final TextDirection textDirection;
 
   /// Whether the text should break at soft line breaks.
   ///
@@ -3242,8 +3792,11 @@ class RichText extends LeafRenderObjectWidget {
 
   @override
   RenderParagraph createRenderObject(BuildContext context) {
+    final TextDirection direction = textDirection ?? Directionality.of(context);
+    assert(direction != null, 'A RichText was created with no textDirection and no ambient Directionality widget.');
     return new RenderParagraph(text,
       textAlign: textAlign,
+      textDirection: direction,
       softWrap: softWrap,
       overflow: overflow,
       textScaleFactor: textScaleFactor,
@@ -3256,6 +3809,7 @@ class RichText extends LeafRenderObjectWidget {
     renderObject
       ..text = text
       ..textAlign = textAlign
+      ..textDirection = textDirection ?? Directionality.of(context)
       ..softWrap = softWrap
       ..overflow = overflow
       ..textScaleFactor = textScaleFactor
@@ -3379,27 +3933,18 @@ class RawImage extends LeafRenderObjectWidget {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('image: $image');
-    if (width != null)
-      description.add('width: $width');
-    if (height != null)
-      description.add('height: $height');
-    if (scale != 1.0)
-      description.add('scale: $scale');
-    if (color != null)
-      description.add('color: $color');
-    if (colorBlendMode != null)
-      description.add('colorBlendMode: $colorBlendMode');
-    if (fit != null)
-      description.add('fit: $fit');
-    if (alignment != null)
-      description.add('alignment: $alignment');
-    if (repeat != ImageRepeat.noRepeat)
-      description.add('repeat: $repeat');
-    if (centerSlice != null)
-      description.add('centerSlice: $centerSlice');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<ui.Image>('image', image));
+    description.add(new DoubleProperty('width', width, defaultValue: null));
+    description.add(new DoubleProperty('height', height, defaultValue: null));
+    description.add(new DoubleProperty('scale', scale, defaultValue: 1.0));
+    description.add(new DiagnosticsProperty<Color>('color', color, defaultValue: null));
+    description.add(new EnumProperty<BlendMode>('colorBlendMode', colorBlendMode, defaultValue: null));
+    description.add(new EnumProperty<BoxFit>('fit', fit, defaultValue: null));
+    description.add(new DiagnosticsProperty<FractionalOffset>('alignment', alignment, defaultValue: null));
+    description.add(new EnumProperty<ImageRepeat>('repeat', repeat, defaultValue: ImageRepeat.noRepeat));
+    description.add(new DiagnosticsProperty<Rect>('centerSlice', centerSlice, defaultValue: null));
   }
 }
 
@@ -3546,8 +4091,8 @@ class Listener extends SingleChildRenderObjectWidget {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
     final List<String> listeners = <String>[];
     if (onPointerDown != null)
       listeners.add('down');
@@ -3559,18 +4104,8 @@ class Listener extends SingleChildRenderObjectWidget {
       listeners.add('cancel');
     if (listeners.isEmpty)
       listeners.add('<none>');
-    description.add('listeners: ${listeners.join(", ")}');
-    switch (behavior) {
-      case HitTestBehavior.translucent:
-        description.add('behavior: translucent');
-        break;
-      case HitTestBehavior.opaque:
-        description.add('behavior: opaque');
-        break;
-      case HitTestBehavior.deferToChild:
-        description.add('behavior: defer-to-child');
-        break;
-    }
+    description.add(new IterableProperty<String>('listeners', listeners));
+    description.add(new EnumProperty<HitTestBehavior>('behavior', behavior));
   }
 }
 
@@ -3670,11 +4205,10 @@ class IgnorePointer extends SingleChildRenderObjectWidget {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('ignoring: $ignoring');
-    if (ignoringSemantics != null)
-      description.add('ignoringSemantics: $ignoringSemantics');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<bool>('ignoring', ignoring));
+    description.add(new DiagnosticsProperty<bool>('ignoringSemantics', ignoringSemantics, defaultValue: null));
   }
 }
 
@@ -3756,10 +4290,10 @@ class MetaData extends SingleChildRenderObjectWidget {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('behavior: $behavior');
-    description.add('metaData: $metaData');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new EnumProperty<HitTestBehavior>('behavior', behavior));
+    description.add(new DiagnosticsProperty<dynamic>('metaData', metaData));
   }
 }
 
@@ -3797,6 +4331,7 @@ class Semantics extends SingleChildRenderObjectWidget {
     this.checked,
     this.selected,
     this.label,
+    this.textDirection,
   }) : assert(container != null),
        super(key: key, child: child);
 
@@ -3825,7 +4360,19 @@ class Semantics extends SingleChildRenderObjectWidget {
   final bool selected;
 
   /// Provides a textual description of the widget.
+  ///
+  /// If a label is provided, there must either by an ambient [Directionality]
+  /// or an explicit [textDirection] should be provided.
   final String label;
+
+  /// The reading direction of the [label].
+  ///
+  /// Defaults to the ambient [Directionality].
+  final TextDirection textDirection;
+
+  TextDirection _getTextDirection(BuildContext context) {
+    return textDirection ?? (label != null ? Directionality.of(context) : null);
+  }
 
   @override
   RenderSemanticsAnnotations createRenderObject(BuildContext context) {
@@ -3834,6 +4381,7 @@ class Semantics extends SingleChildRenderObjectWidget {
       checked: checked,
       selected: selected,
       label: label,
+      textDirection: _getTextDirection(context),
     );
   }
 
@@ -3843,19 +4391,18 @@ class Semantics extends SingleChildRenderObjectWidget {
       ..container = container
       ..checked = checked
       ..selected = selected
-      ..label = label;
+      ..label = label
+      ..textDirection = _getTextDirection(context);
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('container: $container');
-    if (checked != null)
-      description.add('checked: $checked');
-    if (selected != null)
-      description.add('selected: $selected');
-    if (label != null)
-      description.add('label: "$label"');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<bool>('container', container));
+    description.add(new DiagnosticsProperty<bool>('checked', checked, defaultValue: null));
+    description.add(new DiagnosticsProperty<bool>('selected', selected, defaultValue: null));
+    description.add(new StringProperty('label', label, defaultValue: ''));
+    description.add(new EnumProperty<TextDirection>('textDirection', textDirection, defaultValue: null));
   }
 }
 
@@ -3941,9 +4488,9 @@ class ExcludeSemantics extends SingleChildRenderObjectWidget {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('excluding: $excluding');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<bool>('excluding', excluding));
   }
 }
 

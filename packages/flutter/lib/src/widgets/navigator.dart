@@ -14,8 +14,40 @@ import 'focus_manager.dart';
 import 'focus_scope.dart';
 import 'framework.dart';
 import 'overlay.dart';
-import 'routes.dart';
 import 'ticker_provider.dart';
+
+/// Indicates whether the current route should be popped.
+///
+/// Used as the return value for [Route.willPop].
+///
+/// See also:
+///
+///  * [WillPopScope], a widget that hooks into the route's [Route.willPop]
+///    mechanism.
+enum RoutePopDisposition {
+  /// Pop the route.
+  ///
+  /// If [Route.willPop] returns [pop] then the back button will actually pop
+  /// the current route.
+  pop,
+
+  /// Do not pop the route.
+  ///
+  /// If [Route.willPop] returns [doNotPop] then the back button will be ignored.
+  doNotPop,
+
+  /// Delegate this to the next level of navigation.
+  ///
+  /// If [Route.willPop] return [bubble] then the back button will be handled
+  /// by the [SystemNavigator], which will usually close the application.
+  bubble,
+}
+
+/// Signature for a callback that verifies that it's OK to call [Navigator.pop].
+///
+/// Used by [Form.onWillPop], [ModalRoute.addScopedWillPopCallback],
+/// [ModalRoute.removeScopedWillPopCallback], and [WillPopScope].
+typedef Future<bool> WillPopCallback();
 
 /// An abstraction for an entry managed by a [Navigator].
 ///
@@ -79,7 +111,10 @@ abstract class Route<T> {
   ///
   /// See also:
   ///
-  /// * [Form], which provides a [Form.onWillPop] callback that uses this mechanism.
+  ///  * [Form], which provides a [Form.onWillPop] callback that uses this
+  ///    mechanism.
+  ///  * [WillPopScope], another widget that provides a way to intercept the
+  ///    back button.
   Future<RoutePopDisposition> willPop() async {
     return isFirst ? RoutePopDisposition.bubble : RoutePopDisposition.pop;
   }
@@ -143,28 +178,8 @@ abstract class Route<T> {
   @mustCallSuper
   @protected
   void dispose() {
-    assert(() {
-      if (navigator == null) {
-        throw new FlutterError(
-          '$runtimeType.dipose() called more than once.\n'
-          'A given route cannot be disposed more than once.'
-        );
-      }
-      return true;
-    });
     _navigator = null;
   }
-
-  /// If the route's transition can be popped via a user gesture (e.g. the iOS
-  /// back gesture), this should return a controller object that can be used to
-  /// control the transition animation's progress. Otherwise, it should return
-  /// null.
-  ///
-  /// If attempts to dismiss this route might be vetoed, for example because
-  /// a [WillPopCallback] was defined for the route, then it may make sense
-  /// to disable the pop gesture. For example, the iOS back gesture is disabled
-  /// when [ModalRoute.hasScopedWillPopCallback] is true.
-  NavigationGestureController startPopGesture() => null;
 
   /// Whether this route is the top-most route on the navigator.
   ///
@@ -253,54 +268,16 @@ class NavigatorObserver {
   /// The [Navigator] removed `route`.
   void didRemove(Route<dynamic> route, Route<dynamic> previousRoute) { }
 
-  /// The [Navigator] is being controlled by a user gesture.
+  /// The [Navigator]'s routes are being moved by a user gesture.
   ///
-  /// Used for the iOS back gesture.
+  /// For example, this is called when an iOS back gesture starts, and is used
+  /// to disabled hero animations during such interactions.
   void didStartUserGesture() { }
 
   /// User gesture is no longer controlling the [Navigator].
+  ///
+  /// Paired with an earlier call to [didStartUserGesture].
   void didStopUserGesture() { }
-}
-
-/// Interface describing an object returned by the [Route.startPopGesture]
-/// method, allowing the route's transition animations to be controlled by a
-/// drag or other user gesture.
-abstract class NavigationGestureController {
-  /// Configures the NavigationGestureController and tells the given [Navigator] that
-  /// a gesture has started.
-  NavigationGestureController(this._navigator)
-    : assert(_navigator != null) {
-    // Disable Hero transitions until the gesture is complete.
-    _navigator.didStartUserGesture();
-  }
-
-  /// The navigator that this object is controlling.
-  @protected
-  NavigatorState get navigator => _navigator;
-  NavigatorState _navigator;
-
-  /// Release the resources used by this object. The object is no longer usable
-  /// after this method is called.
-  ///
-  /// Must be called when the gesture is done.
-  ///
-  /// Calling this method notifies the navigator that the gesture has completed.
-  @mustCallSuper
-  void dispose() {
-    _navigator.didStopUserGesture();
-    _navigator = null;
-  }
-
-  /// The drag gesture has changed by [fractionalDelta]. The total range of the
-  /// drag should be 0.0 to 1.0.
-  void dragUpdate(double fractionalDelta);
-
-  /// The drag gesture has ended with a horizontal motion of
-  /// [fractionalVelocity] as a fraction of screen width per second.
-  ///
-  /// Returns true if the gesture will complete (i.e. a back gesture will
-  /// result in a pop).
-  bool dragEnd(double fractionalVelocity);
 }
 
 /// Signature for the [Navigator.popUntil] predicate argument.
@@ -443,10 +420,10 @@ typedef bool RoutePredicate(Route<dynamic> route);
 ///
 /// ### Popup routes
 ///
-/// Routes don't have to obscure the entire screen. [PopupRoute]s cover
-/// the screen with a barrierColor that can be only partially opaque to
-/// allow the current screen to show through. Popup routes are "modal"
-/// because they block input to the widgets below.
+/// Routes don't have to obscure the entire screen. [PopupRoute]s cover the
+/// screen with a [ModalRoute.barrierColor] that can be only partially opaque to
+/// allow the current screen to show through. Popup routes are "modal" because
+/// they block input to the widgets below.
 ///
 /// There are functions which create and show popup routes. For
 /// example: [showDialog], [showMenu], and [showModalBottomSheet]. These
@@ -1157,10 +1134,12 @@ class NavigatorState extends State<Navigator> with TickerProviderStateMixin {
   ///
   /// See also:
   ///
-  /// * [Form], which provides a [Form.onWillPop] callback that enables the form
-  ///   to veto a [maybePop] initiated by the app's back button.
-  /// * [ModalRoute], which has as a [ModalRoute.willPop] method that can be
-  ///   defined by a list of [WillPopCallback]s.
+  ///  * [Form], which provides a [Form.onWillPop] callback that enables the form
+  ///    to veto a [maybePop] initiated by the app's back button.
+  ///  * [WillPopScope], a widget that hooks into the route's [Route.willPop]
+  ///    mechanism.
+  ///  * [ModalRoute], which has as a [ModalRoute.willPop] method that can be
+  ///    defined by a list of [WillPopCallback]s.
   Future<bool> maybePop([dynamic result]) async {
     final Route<dynamic> route = _history.last;
     assert(route._navigator == this);
@@ -1289,33 +1268,35 @@ class NavigatorState extends State<Navigator> with TickerProviderStateMixin {
     return _history.length > 1 || _history[0].willHandlePopInternally;
   }
 
-  /// Starts a gesture that results in popping the navigator.
-  NavigationGestureController startPopGesture() {
-    if (canPop())
-      return _history.last.startPopGesture();
-    return null;
-  }
-
-  /// Whether a gesture controlled by a [NavigationGestureController] is currently in progress.
-  bool get userGestureInProgress => _userGestureInProgress;
-  // TODO(mpcomplete): remove this bool when we fix
-  // https://github.com/flutter/flutter/issues/5577
-  bool _userGestureInProgress = false;
+  /// Whether a route is currently being manipulated by the user, e.g.
+  /// as during an iOS back gesture.
+  bool get userGestureInProgress => _userGesturesInProgress > 0;
+  int _userGesturesInProgress = 0;
 
   /// The navigator is being controlled by a user gesture.
   ///
-  /// Used for the iOS back gesture.
+  /// For example, called when the user beings an iOS back gesture.
+  ///
+  /// When the gesture finishes, call [didStopUserGesture].
   void didStartUserGesture() {
-    _userGestureInProgress = true;
-    for (NavigatorObserver observer in widget.observers)
-      observer.didStartUserGesture();
+    _userGesturesInProgress += 1;
+    if (_userGesturesInProgress == 1) {
+      for (NavigatorObserver observer in widget.observers)
+        observer.didStartUserGesture();
+    }
   }
 
-  /// A user gesture is no longer controlling the navigator.
+  /// A user gesture completed.
+  ///
+  /// Notifies the navigator that a gesture regarding which the navigator was
+  /// previously notified with [didStartUserGesture] has completed.
   void didStopUserGesture() {
-    _userGestureInProgress = false;
-    for (NavigatorObserver observer in widget.observers)
-      observer.didStopUserGesture();
+    assert(_userGesturesInProgress > 0);
+    _userGesturesInProgress -= 1;
+    if (_userGesturesInProgress == 0) {
+      for (NavigatorObserver observer in widget.observers)
+        observer.didStopUserGesture();
+    }
   }
 
   final Set<int> _activePointers = new Set<int>();

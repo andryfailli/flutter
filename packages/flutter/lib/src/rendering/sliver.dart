@@ -89,11 +89,30 @@ Axis axisDirectionToAxis(AxisDirection axisDirection) {
   return null;
 }
 
+/// Returns the [AxisDirection] in which reading occurs in the given [TextDirection].
+///
+/// Specifically, returns [AxisDirection.left] for [TextDirection.rtl] and
+/// [AxisDirection.right] for [TextDirection.ltr].
+AxisDirection textDirectionToAxisDirection(TextDirection textDirection) {
+  assert(textDirection != null);
+  switch (textDirection) {
+    case TextDirection.rtl:
+      return AxisDirection.left;
+    case TextDirection.ltr:
+      return AxisDirection.right;
+  }
+  return null;
+}
+
 /// Returns the opposite of the given [AxisDirection].
 ///
 /// Specifically, returns [AxisDirection.up] for [AxisDirection.down] (and
 /// vice versa), as well as [AxisDirection.left] for [AxisDirection.right] (and
 /// vice versa).
+///
+/// See also:
+///
+///  * [flipAxis], which does the same thing for [Axis] values.
 AxisDirection flipAxisDirection(AxisDirection axisDirection) {
   assert(axisDirection != null);
   switch (axisDirection) {
@@ -188,6 +207,7 @@ class SliverConstraints extends Constraints {
     @required this.overlap,
     @required this.remainingPaintExtent,
     @required this.crossAxisExtent,
+    @required this.crossAxisDirection,
     @required this.viewportMainAxisExtent,
   }) : assert(axisDirection != null),
        assert(growthDirection != null),
@@ -196,6 +216,7 @@ class SliverConstraints extends Constraints {
        assert(overlap != null),
        assert(remainingPaintExtent != null),
        assert(crossAxisExtent != null),
+       assert(crossAxisDirection != null),
        assert(viewportMainAxisExtent != null);
 
   /// Creates a copy of this object but with the given fields replaced with the
@@ -208,6 +229,7 @@ class SliverConstraints extends Constraints {
     double overlap,
     double remainingPaintExtent,
     double crossAxisExtent,
+    AxisDirection crossAxisDirection,
     double viewportMainAxisExtent,
   }) {
     return new SliverConstraints(
@@ -218,6 +240,7 @@ class SliverConstraints extends Constraints {
       overlap: overlap ?? this.overlap,
       remainingPaintExtent: remainingPaintExtent ?? this.remainingPaintExtent,
       crossAxisExtent: crossAxisExtent ?? this.crossAxisExtent,
+      crossAxisDirection: crossAxisDirection ?? this.crossAxisDirection,
       viewportMainAxisExtent: viewportMainAxisExtent ?? this.viewportMainAxisExtent,
     );
   }
@@ -311,8 +334,14 @@ class SliverConstraints extends Constraints {
 
   /// The number of pixels in the cross-axis.
   ///
-  /// For a vertical list, this is the width of the sliver..
+  /// For a vertical list, this is the width of the sliver.
   final double crossAxisExtent;
+
+  /// The direction in which children should be placed in the cross axis.
+  ///
+  /// Typically used in vertical lists to describe whether the ambient
+  /// [TextDirection] is [TextDirection.rtl] or [TextDirection.ltr].
+  final AxisDirection crossAxisDirection;
 
   /// The number of pixels the viewport can display in the main axis.
   ///
@@ -357,6 +386,7 @@ class SliverConstraints extends Constraints {
   bool get isNormalized {
     return scrollOffset >= 0.0
         && crossAxisExtent >= 0.0
+        && axisDirectionToAxis(axisDirection) != axisDirectionToAxis(crossAxisDirection)
         && viewportMainAxisExtent >= 0.0
         && remainingPaintExtent >= 0.0;
   }
@@ -417,6 +447,8 @@ class SliverConstraints extends Constraints {
       verify(viewportMainAxisExtent != null, 'The "viewportMainAxisExtent" is null.');
       verify(scrollOffset >= 0.0, 'The "scrollOffset" is negative.');
       verify(crossAxisExtent >= 0.0, 'The "crossAxisExtent" is negative.');
+      verify(crossAxisDirection != null, 'The "crossAxisDirection" is null.');
+      verify(axisDirectionToAxis(axisDirection) != axisDirectionToAxis(crossAxisDirection), 'The "axisDirection" and the "crossAxisDirection" are along the same axis.');
       verify(viewportMainAxisExtent >= 0.0, 'The "viewportMainAxisExtent" is negative.');
       verify(remainingPaintExtent >= 0.0, 'The "remainingPaintExtent" is negative.');
       verify(isNormalized, 'The constraints are not normalized.'); // should be redundant with earlier checks
@@ -433,18 +465,28 @@ class SliverConstraints extends Constraints {
       return false;
     final SliverConstraints typedOther = other;
     assert(typedOther.debugAssertIsValid());
-    return axisDirection == typedOther.axisDirection &&
-           growthDirection == typedOther.growthDirection &&
-           scrollOffset == typedOther.scrollOffset &&
-           overlap == typedOther.overlap &&
-           remainingPaintExtent == typedOther.remainingPaintExtent &&
-           crossAxisExtent == typedOther.crossAxisExtent &&
-           viewportMainAxisExtent == typedOther.viewportMainAxisExtent;
+    return typedOther.axisDirection == axisDirection
+        && typedOther.growthDirection == growthDirection
+        && typedOther.scrollOffset == scrollOffset
+        && typedOther.overlap == overlap
+        && typedOther.remainingPaintExtent == remainingPaintExtent
+        && typedOther.crossAxisExtent == crossAxisExtent
+        && typedOther.crossAxisDirection == crossAxisDirection
+        && typedOther.viewportMainAxisExtent == viewportMainAxisExtent;
   }
 
   @override
   int get hashCode {
-    return hashValues(axisDirection, growthDirection, scrollOffset, overlap, remainingPaintExtent, crossAxisExtent, viewportMainAxisExtent);
+    return hashValues(
+      axisDirection,
+      growthDirection,
+      scrollOffset,
+      overlap,
+      remainingPaintExtent,
+      crossAxisExtent,
+      crossAxisDirection,
+      viewportMainAxisExtent,
+    );
   }
 
   @override
@@ -457,6 +499,7 @@ class SliverConstraints extends Constraints {
              'remainingPaintExtent: ${remainingPaintExtent.toStringAsFixed(1)}, ' +
              (overlap != 0.0 ? 'overlap: ${overlap.toStringAsFixed(1)}, ' : '') +
              'crossAxisExtent: ${crossAxisExtent.toStringAsFixed(1)}, ' +
+             'crossAxisDirection: $crossAxisDirection, ' +
              'viewportMainAxisExtent: ${viewportMainAxisExtent.toStringAsFixed(1)}' +
            ')';
   }
@@ -467,7 +510,7 @@ class SliverConstraints extends Constraints {
 /// A sliver can occupy space in several different ways, which is why this class
 /// contains multiple values.
 @immutable
-class SliverGeometry {
+class SliverGeometry extends Diagnosticable {
   /// Creates an object that describes the amount of space occupied by a sliver.
   ///
   /// If the [layoutExtent] argument is null, [layoutExtent] defaults to the
@@ -482,6 +525,7 @@ class SliverGeometry {
     this.paintOrigin: 0.0,
     double layoutExtent,
     this.maxPaintExtent: 0.0,
+    this.maxScrollObstructionExtent: 0.0,
     double hitTestExtent,
     bool visible,
     this.hasVisualOverflow: false,
@@ -548,6 +592,16 @@ class SliverGeometry {
   ///
   /// By definition, this cannot be less than [paintExtent].
   final double maxPaintExtent;
+
+  /// The maximum extent by which this sliver can reduce the area in which
+  /// content can scroll if the sliver were pinned at the edge.
+  ///
+  /// Slivers that never get pinned at the edge, should return zero.
+  ///
+  /// A pinned app bar is an example for a sliver that would use this setting:
+  /// When the app bar is pinned to the top, the area in which content can
+  /// actually scroll is reduced by the height of the app bar.
+  final double maxScrollObstructionExtent;
 
   /// The distance from where this sliver started painting to the bottom of
   /// where it should accept hits.
@@ -620,38 +674,29 @@ class SliverGeometry {
   }
 
   @override
-  String toString() {
-    final StringBuffer buffer = new StringBuffer();
-    buffer.write('SliverGeometry(');
-      buffer.write('scrollExtent: ${scrollExtent.toStringAsFixed(1)}, ');
-      if (paintExtent > 0.0) {
-        if (visible) {
-          buffer.write('paintExtent: ${paintExtent.toStringAsFixed(1)}, ');
-        } else {
-          buffer.write('paintExtent: ${paintExtent.toStringAsFixed(1)} but not painting, ');
-        }
-      } else if (paintExtent == 0.0) {
-        if (visible) {
-          buffer.write('paintExtent: ${paintExtent.toStringAsFixed(1)} but visible, ');
-        } else {
-          buffer.write('hidden, ');
-        }
-      } else {
-        buffer.write('paintExtent: ${paintExtent.toStringAsFixed(1)} (!), ');
+  String toStringShort() => '$runtimeType';
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new DoubleProperty('scrollExtent', scrollExtent));
+    if (paintExtent > 0.0) {
+      properties.add(new DoubleProperty('paintExtent', paintExtent, unit : visible ? null : ' but not painting'));
+    } else if (paintExtent == 0.0) {
+      if (visible) {
+        properties.add(new DoubleProperty('paintExtent', paintExtent, unit: visible ? null : ' but visible'));
       }
-      if (paintOrigin != 0.0)
-        buffer.write('paintOrigin: ${paintOrigin.toStringAsFixed(1)}, ');
-      if (layoutExtent != paintExtent)
-        buffer.write('layoutExtent: ${layoutExtent.toStringAsFixed(1)}, ');
-      buffer.write('maxPaintExtent: ${maxPaintExtent.toStringAsFixed(1)}, ');
-      if (hitTestExtent != paintExtent)
-        buffer.write('hitTestExtent: ${hitTestExtent.toStringAsFixed(1)}, ');
-      if (hasVisualOverflow)
-        buffer.write('hasVisualOverflow: true, ');
-      if (scrollOffsetCorrection != null)
-        buffer.write('scrollOffsetCorrection: ${scrollOffsetCorrection.toStringAsFixed(1)}');
-    buffer.write(')');
-    return buffer.toString();
+      properties.add(new FlagProperty('visible', value: visible, ifFalse: 'hidden'));
+    } else {
+      // Negative paintExtent!
+      properties.add(new DoubleProperty('paintExtent', paintExtent, tooltip: '!'));
+    }
+    properties.add(new DoubleProperty('paintOrigin', paintOrigin, defaultValue: 0.0));
+    properties.add(new DoubleProperty('layoutExtent', layoutExtent, defaultValue: paintExtent));
+    properties.add(new DoubleProperty('maxPaintExtent', maxPaintExtent));
+    properties.add(new DoubleProperty('hitTestExtent', hitTestExtent, defaultValue: paintExtent));
+    properties.add(new DiagnosticsProperty<bool>('hasVisualOverflow', hasVisualOverflow, defaultValue: false));
+    properties.add(new DoubleProperty('scrollOffsetCorrection', scrollOffsetCorrection, defaultValue: null));
   }
 }
 
@@ -960,14 +1005,14 @@ abstract class RenderSliver extends RenderObject {
       case Axis.horizontal:
         return new Rect.fromLTWH(
           0.0, 0.0,
+          geometry.paintExtent,
           constraints.crossAxisExtent,
-          geometry.paintExtent
         );
       case Axis.vertical:
         return new Rect.fromLTWH(
           0.0, 0.0,
+          constraints.crossAxisExtent,
           geometry.paintExtent,
-          constraints.crossAxisExtent
         );
     }
     return null;
@@ -1255,7 +1300,7 @@ abstract class RenderSliver extends RenderObject {
       if (debugPaintSizeEnabled) {
         final double strokeWidth = math.min(4.0, geometry.paintExtent / 30.0);
         final Paint paint = new Paint()
-          ..color = debugPaintSliverArrowColor
+          ..color = const Color(0xFF33CC33)
           ..strokeWidth = strokeWidth
           ..style = PaintingStyle.stroke
           ..maskFilter = new MaskFilter.blur(BlurStyle.solid, strokeWidth);
@@ -1321,9 +1366,9 @@ abstract class RenderSliver extends RenderObject {
   void handleEvent(PointerEvent event, SliverHitTestEntry entry) { }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('geometry: $geometry');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<SliverGeometry>('geometry', geometry));
   }
 }
 

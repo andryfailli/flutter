@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'dart:async';
 import 'dart:io' show File;
 import 'dart:typed_data';
 
@@ -44,6 +45,34 @@ ImageConfiguration createLocalImageConfiguration(BuildContext context, { Size si
   );
 }
 
+/// Prefetches an image into the image cache.
+///
+/// Returns a [Future] that will complete when the first image yielded by the
+/// [ImageProvider] is available.
+///
+/// If the image is later used by an [Image] or [BoxDecoration] or [FadeInImage],
+/// it will probably be loaded faster.  The consumer of the image does not need
+/// to use the same [ImageProvider] instance.  The [ImageCache] will find the image
+/// as long as both images share the same key.
+///
+/// The [BuildContext] and [Size] are used to select an image configuration
+/// (see [createLocalImageConfiguration]).
+///
+/// See also:
+///
+///   * [ImageCache], which holds images that may be reused.
+Future<Null> precacheImage(ImageProvider provider, BuildContext context, { Size size }) {
+  final ImageConfiguration config = createLocalImageConfiguration(context, size: size);
+  final Completer<Null> completer = new Completer<Null>();
+  final ImageStream stream = provider.resolve(config);
+  void listener(ImageInfo image, bool sync) {
+    completer.complete();
+  }
+  stream.addListener(listener);
+  completer.future.then((Null _) { stream.removeListener(listener); });
+  return completer.future;
+}
+
 /// A widget that displays an image.
 ///
 /// Several constructors are provided for the various ways that an image can be
@@ -84,7 +113,8 @@ class Image extends StatefulWidget {
     this.alignment,
     this.repeat: ImageRepeat.noRepeat,
     this.centerSlice,
-    this.gaplessPlayback: false
+    this.gaplessPlayback: false,
+    this.package,
   }) : assert(image != null),
        super(key: key);
 
@@ -102,7 +132,8 @@ class Image extends StatefulWidget {
     this.alignment,
     this.repeat: ImageRepeat.noRepeat,
     this.centerSlice,
-    this.gaplessPlayback: false
+    this.gaplessPlayback: false,
+    this.package,
   }) : image = new NetworkImage(src, scale: scale),
        super(key: key);
 
@@ -123,20 +154,26 @@ class Image extends StatefulWidget {
     this.alignment,
     this.repeat: ImageRepeat.noRepeat,
     this.centerSlice,
-    this.gaplessPlayback: false
+    this.gaplessPlayback: false,
+    this.package,
   }) : image = new FileImage(file, scale: scale),
        super(key: key);
 
   /// Creates a widget that displays an [ImageStream] obtained from an asset
   /// bundle. The key for the image is given by the `name` argument.
   ///
+  /// The `package` argument must be non-null when displaying an image from a
+  /// package and null otherwise. See the `Assets in packages` section for
+  /// details.
+  ///
   /// If the `bundle` argument is omitted or null, then the
   /// [DefaultAssetBundle] will be used.
   ///
-  /// By default, the exact asset specified will be used. In addition:
+  /// By default, the pixel-density-aware asset resolution will be attempted. In
+  /// addition:
   ///
-  /// * If the `scale` argument is omitted or null, then pixel-density-aware
-  ///   asset resolution will be attempted.
+  /// * If the `scale` argument is provided and is not null, then the exact
+  /// asset specified will be used.
   //
   // TODO(ianh): Implement the following (see ../services/image_resolution.dart):
   // ///
@@ -180,6 +217,49 @@ class Image extends StatefulWidget {
   /// be present in the manifest). If it is omitted, then on a device with a 1.0
   /// device pixel ratio, the `images/2x/cat.png` image would be used instead.
   ///
+  ///
+  /// ## Assets in packages
+  ///
+  /// To create the widget with an asset from a package, the [package] argument
+  /// must be provided. For instance, suppose a package called `my_icons` has
+  /// `icons/heart.png` .
+  ///
+  /// Then to display the image, use:
+  ///
+  /// ```dart
+  /// new Image.asset('icons/heart.png', package: 'my_icons')
+  /// ```
+  ///
+  /// Assets used by the package itself should also be displayed using the
+  /// [package] argument as above.
+  ///
+  /// If the desired asset is specified in the [pubspec.yaml] of the package, it
+  /// is bundled automatically with the app. In particular, assets used by the
+  /// package itself must be specified in its [pubspec.yaml].
+  ///
+  /// A package can also choose to have assets in its 'lib/' folder that are not
+  /// specified in its [pubspec.yaml]. In this case for those images to be
+  /// bundled, the app has to specify which ones to include. For instance a
+  /// package named `fancy_backgrounds` could have:
+  ///
+  /// ```
+  /// lib/backgrounds/background1.png
+  /// lib/backgrounds/background2.png
+  /// lib/backgrounds/background3.png
+  ///```
+  ///
+  /// To include, say the first image, the [pubspec.yaml] of the app should
+  /// specify it in the assets section:
+  ///
+  /// ```yaml
+  ///  assets:
+  ///    - packages/fancy_backgrounds/backgrounds/background1.png
+  /// ```
+  ///
+  /// Note that the `lib/` is implied, so it should not be included in the asset
+  /// path.
+  ///
+  ///
   /// See also:
   ///
   ///  * [AssetImage], which is used to implement the behavior when the scale is
@@ -200,10 +280,12 @@ class Image extends StatefulWidget {
     this.alignment,
     this.repeat: ImageRepeat.noRepeat,
     this.centerSlice,
-    this.gaplessPlayback: false
-  }) : image = scale != null ? new ExactAssetImage(name, bundle: bundle, scale: scale)
-                             : new AssetImage(name, bundle: bundle),
-       super(key: key);
+    this.gaplessPlayback: false,
+    this.package,
+  }) : image = scale != null
+      ? new ExactAssetImage(name, bundle: bundle, scale: scale, package: package)
+      : new AssetImage(name, bundle: bundle, package: package),
+        super(key: key);
 
   /// Creates a widget that displays an [ImageStream] obtained from a [Uint8List].
   ///
@@ -219,7 +301,8 @@ class Image extends StatefulWidget {
     this.alignment,
     this.repeat: ImageRepeat.noRepeat,
     this.centerSlice,
-    this.gaplessPlayback: false
+    this.gaplessPlayback: false,
+    this.package,
   }) : image = new MemoryImage(bytes, scale: scale),
        super(key: key);
 
@@ -280,29 +363,25 @@ class Image extends StatefulWidget {
   /// (false), when the image provider changes.
   final bool gaplessPlayback;
 
+  /// The name of the package from which the image is included. See the
+  /// documentation for the [Image.asset] constructor for details.
+  final String package;
+
   @override
   _ImageState createState() => new _ImageState();
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('image: $image');
-    if (width != null)
-      description.add('width: $width');
-    if (height != null)
-      description.add('height: $height');
-    if (color != null)
-      description.add('color: $color');
-    if (colorBlendMode != null)
-      description.add('colorBlendMode: $colorBlendMode');
-    if (fit != null)
-      description.add('fit: $fit');
-    if (alignment != null)
-      description.add('alignment: $alignment');
-    if (repeat != ImageRepeat.noRepeat)
-      description.add('repeat: $repeat');
-    if (centerSlice != null)
-      description.add('centerSlice: $centerSlice');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<ImageProvider>('image', image));
+    description.add(new DoubleProperty('width', width, defaultValue: null));
+    description.add(new DoubleProperty('height', height, defaultValue: null));
+    description.add(new DiagnosticsProperty<Color>('color', color, defaultValue: null));
+    description.add(new EnumProperty<BlendMode>('colorBlendMode', colorBlendMode, defaultValue: null));
+    description.add(new EnumProperty<BoxFit>('fit', fit, defaultValue: null));
+    description.add(new DiagnosticsProperty<FractionalOffset>('alignment', alignment, defaultValue: null));
+    description.add(new EnumProperty<ImageRepeat>('repeat', repeat, defaultValue: ImageRepeat.noRepeat));
+    description.add(new DiagnosticsProperty<Rect>('centerSlice', centerSlice, defaultValue: null));
   }
 }
 
@@ -374,9 +453,9 @@ class _ImageState extends State<Image> {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('stream: $_imageStream');
-    description.add('pixels: $_imageInfo');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<ImageStream>('stream', _imageStream));
+    description.add(new DiagnosticsProperty<ImageInfo>('pixels', _imageInfo));
   }
 }

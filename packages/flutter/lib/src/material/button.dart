@@ -88,7 +88,7 @@ class ButtonTheme extends InheritedWidget {
   /// The amount of space to surround the child inside the bounds of the button.
   ///
   /// Defaults to 16.0 pixels of horizontal padding.
-  final EdgeInsets padding;
+  final EdgeInsetsGeometry padding;
 
   /// The closest instance of this class that encloses the given context.
   ///
@@ -184,7 +184,7 @@ class MaterialButton extends StatefulWidget {
   /// fill the button area if the touch is held for long enough time. If the splash
   /// color has transparency then the highlight and button color will show through.
   ///
-  /// Defaults to the splash color from the [Theme].
+  /// Defaults to the Theme's splash color, [ThemeData.splashColor].
   final Color splashColor;
 
   /// The secondary color of the button when the button is in the down (pressed)
@@ -192,7 +192,7 @@ class MaterialButton extends StatefulWidget {
   /// button color (if any). If the highlight color has transparency, the button color
   /// will show through. The highlight fades in quickly as the button is held down.
   ///
-  /// Defaults to the highlight color from the [Theme].
+  /// Defaults to the Theme's highlight color, [ThemeData.highlightColor].
   final Color highlightColor;
 
   /// The z-coordinate at which to place this button. This controls the size of
@@ -231,7 +231,7 @@ class MaterialButton extends StatefulWidget {
   /// The amount of space to surround the child inside the bounds of the button.
   ///
   /// Defaults to the value from the current [ButtonTheme].
-  final EdgeInsets padding;
+  final EdgeInsetsGeometry padding;
 
   /// The callback that is called when the button is tapped or otherwise activated.
   ///
@@ -249,10 +249,9 @@ class MaterialButton extends StatefulWidget {
   _MaterialButtonState createState() => new _MaterialButtonState();
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    if (!enabled)
-      description.add('disabled');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new FlagProperty('enabled', value: enabled, ifFalse: 'disabled'));
   }
 }
 

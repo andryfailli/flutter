@@ -29,6 +29,9 @@ import 'viewport.dart';
 /// [ScrollView] helps orchestrate these pieces by creating the [Scrollable] and
 /// the viewport and defering to its subclass to create the slivers.
 ///
+/// To control the initial scroll offset of the scroll view, provide a
+/// [controller] with its [ScrollController.initialScrollOffset] property set.
+///
 /// See also:
 ///
 ///  * [ListView], which is a commonly used [ScrollView] that displays a
@@ -39,6 +42,8 @@ import 'viewport.dart';
 ///    of child widgets.
 ///  * [CustomScrollView], which is a [ScrollView] that creates custom scroll
 ///    effects using slivers.
+///  * [ScrollNotification] and [NotificationListener], which can be used to watch
+///    the scroll position without using a [ScrollController].
 abstract class ScrollView extends StatelessWidget {
   /// Creates a widget that scrolls.
   ///
@@ -84,6 +89,14 @@ abstract class ScrollView extends StatelessWidget {
   /// view is scrolled.
   ///
   /// Must be null if [primary] is true.
+  ///
+  /// A [ScrollController] serves several purposes. It can be used to control
+  /// the initial scroll position (see [ScrollController.initialScrollOffset]).
+  /// It can be used to control whether the scroll view should automatically
+  /// save and restore its scroll position in the [PageStorage] (see
+  /// [ScrollController.keepScrollOffset]). It can be used to read the current
+  /// scroll position (see [ScrollController.offset]), or change it (see
+  /// [ScrollController.animateTo]).
   final ScrollController controller;
 
   /// Whether this is the primary scroll view associated with the parent
@@ -157,13 +170,20 @@ abstract class ScrollView extends StatelessWidget {
   /// Combines the [scrollDirection] with the [reverse] boolean to obtain the
   /// concrete [AxisDirection].
   ///
-  /// In the future, this function will also consider the reading direction.
+  /// If the [scrollDirection] is [Axis.horizontal], the ambient
+  /// [Directionality] is also consided when selecting the concrete
+  /// [AxisDirection]. For example, if the ambient [Directionality] is
+  /// [TextDirection.rtl], then the non-reversed [AxisDirection] is
+  /// [AxisDirection.left] and the reversed [AxisDirection] is
+  /// [AxisDirection.right].
   @protected
   AxisDirection getDirection(BuildContext context) {
-    // TODO(abarth): Consider reading direction.
     switch (scrollDirection) {
       case Axis.horizontal:
-        return reverse ? AxisDirection.left : AxisDirection.right;
+        final TextDirection textDirection = Directionality.of(context);
+        assert(textDirection != null);
+        final AxisDirection axisDirection = textDirectionToAxisDirection(textDirection);
+        return reverse ? flipAxisDirection(axisDirection) : axisDirection;
       case Axis.vertical:
         return reverse ? AxisDirection.up : AxisDirection.down;
     }
@@ -209,19 +229,14 @@ abstract class ScrollView extends StatelessWidget {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    description.add('$scrollDirection');
-    if (reverse)
-      description.add('reversed');
-    if (controller != null)
-      description.add('$controller');
-    if (primary)
-      description.add('using primary controller');
-    if (physics != null)
-      description.add('$physics');
-    if (shrinkWrap)
-      description.add('shrink-wrapping');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new EnumProperty<Axis>('scrollDirection', scrollDirection));
+    description.add(new FlagProperty('reverse', value: reverse, ifTrue: 'reversed', showName: true));
+    description.add(new DiagnosticsProperty<ScrollController>('controller', controller, showName: false, defaultValue: null));
+    description.add(new FlagProperty('primary', value: primary, ifTrue: 'using primary controller', showName: true));
+    description.add(new DiagnosticsProperty<ScrollPhysics>('physics', physics, showName: false, defaultValue: null));
+    description.add(new FlagProperty('shrinkWrap', value: shrinkWrap, ifTrue: 'shrink-wrapping', showName: true));
   }
 }
 
@@ -232,6 +247,11 @@ abstract class ScrollView extends StatelessWidget {
 /// to create a scroll view that contains an expanding app bar followed by a
 /// list and a grid, use a list of three slivers: [SliverAppBar], [SliverList],
 /// and [SliverGrid].
+///
+/// [Widget]s in these [slivers] must produce [RenderSliver] objects.
+///
+/// To control the initial scroll offset of the scroll view, provide a
+/// [controller] with its [ScrollController.initialScrollOffset] property set.
 ///
 /// ## Sample code
 ///
@@ -292,6 +312,8 @@ abstract class ScrollView extends StatelessWidget {
 ///    sliver.
 ///  * [SliverAppBar], which is a sliver that displays a header that can expand
 ///    and float as the scroll view scrolls.
+///  * [ScrollNotification] and [NotificationListener], which can be used to watch
+///    the scroll position without using a [ScrollController].
 class CustomScrollView extends ScrollView {
   /// Creates a [ScrollView] that creates custom scroll effects using slivers.
   ///
@@ -354,7 +376,7 @@ abstract class BoxScrollView extends ScrollView {
   );
 
   /// The amount of space by which to inset the children.
-  final EdgeInsets padding;
+  final EdgeInsetsGeometry padding;
 
   @override
   List<Widget> buildSlivers(BuildContext context) {
@@ -369,10 +391,9 @@ abstract class BoxScrollView extends ScrollView {
   Widget buildChildLayout(BuildContext context);
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    if (padding != null)
-      description.add('padding: $padding');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DiagnosticsProperty<EdgeInsetsGeometry>('padding', padding, defaultValue: null));
   }
 }
 
@@ -406,6 +427,9 @@ abstract class BoxScrollView extends ScrollView {
 ///     a [SliverChildDelegate] can control the algorithm used to estimate the
 ///     size of children that are not actually visible.
 ///
+/// To control the initial scroll offset of the scroll view, provide a
+/// [controller] with its [ScrollController.initialScrollOffset] property set.
+///
 /// ## Sample code
 ///
 /// An infinite list of children:
@@ -423,7 +447,7 @@ abstract class BoxScrollView extends ScrollView {
 /// ## Transitioning to [CustomScrollView]
 ///
 /// A [ListView] is basically a [CustomScrollView] with a single [SliverList] in
-/// its [slivers] property.
+/// its [CustomScrollView.slivers] property.
 ///
 /// If [ListView] is no longer sufficient, for example because the scroll view
 /// is to have both a list and a grid, or because the list is to be combined
@@ -504,6 +528,8 @@ abstract class BoxScrollView extends ScrollView {
 ///    scroll effects using slivers.
 ///  * [ListBody], which arranges its children in a similar manner, but without
 ///    scrolling.
+///  * [ScrollNotification] and [NotificationListener], which can be used to watch
+///    the scroll position without using a [ScrollController].
 class ListView extends BoxScrollView {
   /// Creates a scrollable, linear array of widgets from an explicit [List].
   ///
@@ -528,7 +554,7 @@ class ListView extends BoxScrollView {
     bool primary,
     ScrollPhysics physics,
     bool shrinkWrap: false,
-    EdgeInsets padding,
+    EdgeInsetsGeometry padding,
     this.itemExtent,
     bool addAutomaticKeepAlives: true,
     bool addRepaintBoundaries: true,
@@ -580,7 +606,7 @@ class ListView extends BoxScrollView {
     bool primary,
     ScrollPhysics physics,
     bool shrinkWrap: false,
-    EdgeInsets padding,
+    EdgeInsetsGeometry padding,
     this.itemExtent,
     @required IndexedWidgetBuilder itemBuilder,
     int itemCount,
@@ -614,7 +640,7 @@ class ListView extends BoxScrollView {
     bool primary,
     ScrollPhysics physics,
     bool shrinkWrap: false,
-    EdgeInsets padding,
+    EdgeInsetsGeometry padding,
     this.itemExtent,
     @required this.childrenDelegate,
   }) : assert(childrenDelegate != null),
@@ -658,10 +684,9 @@ class ListView extends BoxScrollView {
   }
 
   @override
-  void debugFillDescription(List<String> description) {
-    super.debugFillDescription(description);
-    if (itemExtent != null)
-      description.add('itemExtent: $itemExtent');
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(new DoubleProperty('itemExtent', itemExtent, defaultValue: null));
   }
 }
 
@@ -686,10 +711,13 @@ class ListView extends BoxScrollView {
 ///
 /// To create a linear array of children, use a [ListView].
 ///
+/// To control the initial scroll offset of the scroll view, provide a
+/// [controller] with its [ScrollController.initialScrollOffset] property set.
+///
 /// ## Transitioning to [CustomScrollView]
 ///
 /// A [GridView] is basically a [CustomScrollView] with a single [SliverGrid] in
-/// its [slivers] property.
+/// its [CustomScrollView.slivers] property.
 ///
 /// If [GridView] is no longer sufficient, for example because the scroll view
 /// is to have both a grid and a list, or because the grid is to be combined
@@ -785,6 +813,8 @@ class ListView extends BoxScrollView {
 ///    a fixed number of tiles in the cross axis.
 ///  * [SliverGridDelegateWithMaxCrossAxisExtent], which creates a layout with
 ///    tiles that have a maximum cross-axis extent.
+///  * [ScrollNotification] and [NotificationListener], which can be used to watch
+///    the scroll position without using a [ScrollController].
 class GridView extends BoxScrollView {
   /// Creates a scrollable, 2D array of widgets with a custom
   /// [SliverGridDelegate].
@@ -804,7 +834,7 @@ class GridView extends BoxScrollView {
     bool primary,
     ScrollPhysics physics,
     bool shrinkWrap: false,
-    EdgeInsets padding,
+    EdgeInsetsGeometry padding,
     @required this.gridDelegate,
     bool addAutomaticKeepAlives: true,
     bool addRepaintBoundaries: true,
@@ -853,7 +883,7 @@ class GridView extends BoxScrollView {
     bool primary,
     ScrollPhysics physics,
     bool shrinkWrap: false,
-    EdgeInsets padding,
+    EdgeInsetsGeometry padding,
     @required this.gridDelegate,
     @required IndexedWidgetBuilder itemBuilder,
     int itemCount,
@@ -892,7 +922,7 @@ class GridView extends BoxScrollView {
     bool primary,
     ScrollPhysics physics,
     bool shrinkWrap: false,
-    EdgeInsets padding,
+    EdgeInsetsGeometry padding,
     @required this.gridDelegate,
     @required this.childrenDelegate,
   }) : assert(gridDelegate != null),
@@ -930,7 +960,7 @@ class GridView extends BoxScrollView {
     bool primary,
     ScrollPhysics physics,
     bool shrinkWrap: false,
-    EdgeInsets padding,
+    EdgeInsetsGeometry padding,
     @required int crossAxisCount,
     double mainAxisSpacing: 0.0,
     double crossAxisSpacing: 0.0,
@@ -981,7 +1011,7 @@ class GridView extends BoxScrollView {
     bool primary,
     ScrollPhysics physics,
     bool shrinkWrap: false,
-    EdgeInsets padding,
+    EdgeInsetsGeometry padding,
     @required double maxCrossAxisExtent,
     double mainAxisSpacing: 0.0,
     double crossAxisSpacing: 0.0,

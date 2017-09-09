@@ -13,6 +13,7 @@ import '../base/process.dart';
 import '../base/process_manager.dart';
 import '../base/utils.dart';
 import '../build_info.dart';
+import '../compile.dart';
 import '../dart/package_map.dart';
 import '../globals.dart';
 import '../resident_runner.dart';
@@ -35,7 +36,8 @@ class BuildAotCommand extends BuildSubCommand {
         allowed: <String>['android-arm', 'ios']
       )
       ..addFlag('interpreter')
-      ..addFlag('quiet', defaultsTo: false);
+      ..addFlag('quiet', defaultsTo: false)
+      ..addFlag('preview-dart-2', negatable: false);
   }
 
   @override
@@ -63,7 +65,8 @@ class BuildAotCommand extends BuildSubCommand {
       platform,
       getBuildMode(),
       outputPath: argResults['output-dir'],
-      interpreter: argResults['interpreter']
+      interpreter: argResults['interpreter'],
+      previewDart2: argResults['preview-dart-2'],
     );
     status?.stop();
 
@@ -90,7 +93,8 @@ Future<String> buildAotSnapshot(
   TargetPlatform platform,
   BuildMode buildMode, {
   String outputPath,
-  bool interpreter: false
+  bool interpreter: false,
+  bool previewDart2: false,
 }) async {
   outputPath ??= getAotBuildDirectory();
   try {
@@ -99,7 +103,8 @@ Future<String> buildAotSnapshot(
       platform,
       buildMode,
       outputPath: outputPath,
-      interpreter: interpreter
+      interpreter: interpreter,
+      previewDart2: previewDart2,
     );
   } on String catch (error) {
     // Catch the String exceptions thrown from the `runCheckedSync` methods below.
@@ -108,12 +113,14 @@ Future<String> buildAotSnapshot(
   }
 }
 
+// TODO(cbracken): split AOT and Assembly AOT snapshotting logic and migrate to Snapshotter class.
 Future<String> _buildAotSnapshot(
   String mainPath,
   TargetPlatform platform,
   BuildMode buildMode, {
   String outputPath,
-  bool interpreter: false
+  bool interpreter: false,
+  bool previewDart2: false,
 }) async {
   outputPath ??= getAotBuildDirectory();
   if (!isAotBuildMode(buildMode) && !interpreter) {
@@ -136,7 +143,11 @@ Future<String> _buildAotSnapshot(
   final String isolateSnapshotInstructions = fs.path.join(outputDir.path, 'isolate_snapshot_instr');
   final String dependencies = fs.path.join(outputDir.path, 'snapshot.d');
 
-  final String vmEntryPoints = artifacts.getArtifactPath(Artifact.dartVmEntryPointsTxt, platform, buildMode);
+  final String vmEntryPoints = artifacts.getArtifactPath(
+    Artifact.dartVmEntryPointsTxt,
+    platform,
+    buildMode,
+  );
   final String ioEntryPoints = artifacts.getArtifactPath(Artifact.dartIoEntriesTxt, platform, buildMode);
 
   final PackageMap packageMap = new PackageMap(PackageMap.globalPackagesPath);
@@ -155,6 +166,7 @@ Future<String> _buildAotSnapshot(
     ioEntryPoints,
     uiPath,
     vmServicePath,
+    mainPath,
   ];
 
   final Set<String> outputPaths = new Set<String>();
@@ -205,6 +217,7 @@ Future<String> _buildAotSnapshot(
     '--url_mapping=dart:vmservice_sky,$vmServicePath',
     '--print_snapshot_sizes',
     '--dependencies=$dependencies',
+    '--causal_async_stacks',
   ];
 
   if (!interpreter) {
@@ -263,26 +276,35 @@ Future<String> _buildAotSnapshot(
     ]);
   }
 
+  if (previewDart2) {
+    mainPath = await compile(
+      sdkRoot: artifacts.getArtifactPath(Artifact.flutterPatchedSdkPath),
+      mainPath: mainPath,
+    );
+  }
+
   genSnapshotCmd.add(mainPath);
 
-  final File checksumFile = fs.file('$dependencies.checksum');
-  final List<File> checksumFiles = <File>[checksumFile, fs.file(dependencies)]
+  final SnapshotType snapshotType = new SnapshotType(platform, buildMode);
+  final File fingerprintFile = fs.file('$dependencies.fingerprint');
+  final List<File> fingerprintFiles = <File>[fingerprintFile, fs.file(dependencies)]
       ..addAll(inputPaths.map(fs.file))
       ..addAll(outputPaths.map(fs.file));
-  if (checksumFiles.every((File file) => file.existsSync())) {
+  if (fingerprintFiles.every((File file) => file.existsSync())) {
     try {
-      final String json = await checksumFile.readAsString();
-      final Checksum oldChecksum = new Checksum.fromJson(json);
-      final Set<String> snapshotInputPaths = await readDepfile(dependencies);
-      snapshotInputPaths.addAll(outputPaths);
-      final Checksum newChecksum = new Checksum.fromFiles(snapshotInputPaths);
-      if (oldChecksum == newChecksum) {
-        printTrace('Skipping AOT snapshot build. Checksums match.');
+      final String json = await fingerprintFile.readAsString();
+      final Fingerprint oldFingerprint = new Fingerprint.fromJson(json);
+      final Set<String> snapshotInputPaths = await readDepfile(dependencies)
+        ..add(mainPath)
+        ..addAll(outputPaths);
+      final Fingerprint newFingerprint = Snapshotter.createFingerprint(snapshotType, mainPath, snapshotInputPaths);
+      if (oldFingerprint == newFingerprint) {
+        printStatus('Skipping AOT snapshot build. Fingerprint match.');
         return outputPath;
       }
-    } catch (e, s) {
+    } catch (e) {
       // Log exception and continue, this step is a performance improvement only.
-      printTrace('Error during AOT snapshot checksum check: $e\n$s');
+      printTrace('Rebuilding snapshot due to fingerprint check error: $e');
     }
   }
 
@@ -348,15 +370,16 @@ Future<String> _buildAotSnapshot(
     await runCheckedAsync(linkCommand);
   }
 
-  // Compute and record checksums.
+  // Compute and record build fingerprint.
   try {
-    final Set<String> snapshotInputPaths = await readDepfile(dependencies);
-    snapshotInputPaths..addAll(outputPaths);
-    final Checksum checksum = new Checksum.fromFiles(snapshotInputPaths);
-    await checksumFile.writeAsString(checksum.toJson());
+    final Set<String> snapshotInputPaths = await readDepfile(dependencies)
+      ..add(mainPath)
+      ..addAll(outputPaths);
+    final Fingerprint fingerprint = Snapshotter.createFingerprint(snapshotType, mainPath, snapshotInputPaths);
+    await fingerprintFile.writeAsString(fingerprint.toJson());
   } catch (e, s) {
     // Log exception and continue, this step is a performance improvement only.
-    printTrace('Error during AOT snapshot checksum output: $e\n$s');
+    printStatus('Error during AOT snapshot fingerprinting: $e\n$s');
   }
 
   return outputPath;

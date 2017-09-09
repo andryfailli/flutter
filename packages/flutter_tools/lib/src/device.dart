@@ -111,26 +111,33 @@ abstract class DeviceDiscovery {
 abstract class PollingDeviceDiscovery extends DeviceDiscovery {
   PollingDeviceDiscovery(this.name);
 
-  static const Duration _pollingDuration = const Duration(seconds: 4);
+  static const Duration _pollingInterval = const Duration(seconds: 4);
+  static const Duration _pollingTimeout = const Duration(seconds: 30);
 
   final String name;
   ItemListNotifier<Device> _items;
-  Timer _timer;
+  Poller _poller;
 
   Future<List<Device>> pollingGetDevices();
 
   void startPolling() {
-    if (_timer == null) {
+    if (_poller == null) {
       _items ??= new ItemListNotifier<Device>();
-      _timer = new Timer.periodic(_pollingDuration, (Timer timer) async {
-        _items.updateWithNewList(await pollingGetDevices());
-      });
+
+      _poller = new Poller(() async {
+        try {
+          final List<Device> devices = await pollingGetDevices().timeout(_pollingTimeout);
+          _items.updateWithNewList(devices);
+        } on TimeoutException {
+          printTrace('Device poll timed out.');
+        }
+      }, _pollingInterval);
     }
   }
 
   void stopPolling() {
-    _timer?.cancel();
-    _timer = null;
+    _poller?.cancel();
+    _poller = null;
   }
 
   @override
@@ -228,13 +235,11 @@ abstract class Device {
   /// for iOS device deployment. Set to false if stdin cannot be read from while
   /// attempting to start the app.
   Future<LaunchResult> startApp(
-    ApplicationPackage package,
-    BuildMode mode, {
+    ApplicationPackage package, {
     String mainPath,
     String route,
     DebuggingOptions debuggingOptions,
     Map<String, dynamic> platformArgs,
-    String kernelPath,
     bool prebuiltApplication: false,
     bool applicationNeedsRebuild: false,
     bool usesTerminalUi: true,
@@ -309,7 +314,7 @@ abstract class Device {
 }
 
 class DebuggingOptions {
-  DebuggingOptions.enabled(this.buildMode, {
+  DebuggingOptions.enabled(this.buildInfo, {
     this.startPaused: false,
     this.enableSoftwareRendering: false,
     this.useTestFonts: false,
@@ -317,7 +322,7 @@ class DebuggingOptions {
     this.diagnosticPort
    }) : debuggingEnabled = true;
 
-  DebuggingOptions.disabled(this.buildMode) :
+  DebuggingOptions.disabled(this.buildInfo) :
     debuggingEnabled = false,
     useTestFonts = false,
     startPaused = false,
@@ -327,7 +332,7 @@ class DebuggingOptions {
 
   final bool debuggingEnabled;
 
-  final BuildMode buildMode;
+  final BuildInfo buildInfo;
   final bool startPaused;
   final bool enableSoftwareRendering;
   final bool useTestFonts;

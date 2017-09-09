@@ -196,7 +196,7 @@ void main() {
       )
     );
 
-    expect(imageProvider._configuration.devicePixelRatio, 5.0);
+    expect(imageProvider._lastResolvedConfiguration.devicePixelRatio, 5.0);
 
     // This is the same widget hierarchy as before except that the
     // two MediaQuery objects have exchanged places. The imageProvider
@@ -222,7 +222,7 @@ void main() {
       )
     );
 
-    expect(imageProvider._configuration.devicePixelRatio, 10.0);
+    expect(imageProvider._lastResolvedConfiguration.devicePixelRatio, 10.0);
   });
 
   testWidgets('Verify ImageProvider configuration inheritance again', (WidgetTester tester) async {
@@ -235,6 +235,7 @@ void main() {
     // of the Image changes and the MediaQuery widgets do not.
     await tester.pumpWidget(
       new Row(
+        textDirection: TextDirection.ltr,
         children: <Widget> [
           new MediaQuery(
             key: mediaQueryKey2,
@@ -259,10 +260,11 @@ void main() {
       )
     );
 
-    expect(imageProvider._configuration.devicePixelRatio, 5.0);
+    expect(imageProvider._lastResolvedConfiguration.devicePixelRatio, 5.0);
 
     await tester.pumpWidget(
       new Row(
+        textDirection: TextDirection.ltr,
         children: <Widget> [
           new MediaQuery(
             key: mediaQueryKey2,
@@ -287,19 +289,19 @@ void main() {
       )
     );
 
-    expect(imageProvider._configuration.devicePixelRatio, 10.0);
+    expect(imageProvider._lastResolvedConfiguration.devicePixelRatio, 10.0);
   });
 
   testWidgets('Verify Image stops listening to ImageStream', (WidgetTester tester) async {
     final TestImageProvider imageProvider = new TestImageProvider();
     await tester.pumpWidget(new Image(image: imageProvider));
     final State<Image> image = tester.state/*State<Image>*/(find.byType(Image));
-    expect(image.toString(), equalsIgnoringHashCodes('_ImageState#00000(stream: ImageStream(OneFrameImageStreamCompleter; unresolved; 1 listener); pixels: null)'));
+    expect(image.toString(), equalsIgnoringHashCodes('_ImageState#00000(stream: ImageStream(OneFrameImageStreamCompleter, unresolved, 1 listener), pixels: null)'));
     imageProvider.complete();
     await tester.pump();
-    expect(image.toString(), equalsIgnoringHashCodes('_ImageState#00000(stream: ImageStream(OneFrameImageStreamCompleter; [100×100] @ 1.0x; 1 listener); pixels: [100×100] @ 1.0x)'));
+    expect(image.toString(), equalsIgnoringHashCodes('_ImageState#00000(stream: ImageStream(OneFrameImageStreamCompleter, [100×100] @ 1.0x, 1 listener), pixels: [100×100] @ 1.0x)'));
     await tester.pumpWidget(new Container());
-    expect(image.toString(), equalsIgnoringHashCodes('_ImageState#00000(_StateLifecycle.defunct; not mounted; stream: ImageStream(OneFrameImageStreamCompleter; [100×100] @ 1.0x; 0 listeners); pixels: [100×100] @ 1.0x)'));
+    expect(image.toString(), equalsIgnoringHashCodes('_ImageState#00000(lifecycle state: defunct, not mounted, stream: ImageStream(OneFrameImageStreamCompleter, [100×100] @ 1.0x, 0 listeners), pixels: [100×100] @ 1.0x)'));
   });
 
   testWidgets('Image.memory control test', (WidgetTester tester) async {
@@ -318,11 +320,33 @@ void main() {
     expect(renderer.color, const Color(0xFF00FF00));
     expect(renderer.colorBlendMode, BlendMode.clear);
   });
+
+  testWidgets('Precache', (WidgetTester tester) async {
+    final TestImageProvider provider = new TestImageProvider();
+    Future<Null> precache;
+    await tester.pumpWidget(
+      new Builder(
+        builder: (BuildContext context) {
+          precache = precacheImage(provider, context);
+          return new Container();
+        }
+      )
+    );
+    provider.complete();
+    await precache;
+    expect(provider._lastResolvedConfiguration, isNotNull);
+
+    // Check that a second resolve of the same image is synchronous.
+    final ImageStream stream = provider.resolve(provider._lastResolvedConfiguration);
+    bool isSync;
+    stream.addListener((ImageInfo image, bool sync) { isSync = sync; });
+    expect(isSync, isTrue);
+  });
 }
 
 class TestImageProvider extends ImageProvider<TestImageProvider> {
   final Completer<ImageInfo> _completer = new Completer<ImageInfo>();
-  ImageConfiguration _configuration;
+  ImageConfiguration _lastResolvedConfiguration;
 
   @override
   Future<TestImageProvider> obtainKey(ImageConfiguration configuration) {
@@ -331,7 +355,7 @@ class TestImageProvider extends ImageProvider<TestImageProvider> {
 
   @override
   ImageStream resolve(ImageConfiguration configuration) {
-    _configuration = configuration;
+    _lastResolvedConfiguration = configuration;
     return super.resolve(configuration);
   }
 

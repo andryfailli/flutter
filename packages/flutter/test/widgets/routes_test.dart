@@ -4,6 +4,7 @@
 
 import 'dart:collection';
 
+import 'package:mockito/mockito.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/widgets.dart';
 
@@ -108,10 +109,15 @@ void main() {
 
   testWidgets('Route management - push, replace, pop', (WidgetTester tester) async {
     final GlobalKey<NavigatorState> navigatorKey = new GlobalKey<NavigatorState>();
-    await tester.pumpWidget(new Navigator(
-      key: navigatorKey,
-      onGenerateRoute: (_) => new TestRoute('initial')
-    ));
+    await tester.pumpWidget(
+      new Directionality(
+        textDirection: TextDirection.ltr,
+        child: new Navigator(
+          key: navigatorKey,
+          onGenerateRoute: (_) => new TestRoute('initial'),
+        ),
+      ),
+    );
     final NavigatorState host = navigatorKey.currentState;
     await runNavigatorTest(
       tester,
@@ -186,10 +192,15 @@ void main() {
 
   testWidgets('Route management - push, remove, pop', (WidgetTester tester) async {
     final GlobalKey<NavigatorState> navigatorKey = new GlobalKey<NavigatorState>();
-    await tester.pumpWidget(new Navigator(
-      key: navigatorKey,
-      onGenerateRoute: (_) => new TestRoute('first')
-    ));
+    await tester.pumpWidget(
+      new Directionality(
+        textDirection: TextDirection.ltr,
+        child: new Navigator(
+          key: navigatorKey,
+          onGenerateRoute: (_) => new TestRoute('first')
+        ),
+      ),
+    );
     final NavigatorState host = navigatorKey.currentState;
     await runNavigatorTest(
       tester,
@@ -292,10 +303,15 @@ void main() {
 
   testWidgets('Route management - push, replace, popUntil', (WidgetTester tester) async {
     final GlobalKey<NavigatorState> navigatorKey = new GlobalKey<NavigatorState>();
-    await tester.pumpWidget(new Navigator(
-      key: navigatorKey,
-      onGenerateRoute: (_) => new TestRoute('A')
-    ));
+    await tester.pumpWidget(
+      new Directionality(
+        textDirection: TextDirection.ltr,
+        child: new Navigator(
+          key: navigatorKey,
+          onGenerateRoute: (_) => new TestRoute('A')
+        ),
+      ),
+    );
     final NavigatorState host = navigatorKey.currentState;
     await runNavigatorTest(
       tester,
@@ -369,10 +385,15 @@ void main() {
       onRemove: () { routeA.log('onRemove 1'); }
     ));
     final GlobalKey<NavigatorState> navigatorKey = new GlobalKey<NavigatorState>();
-    await tester.pumpWidget(new Navigator(
-      key: navigatorKey,
-      onGenerateRoute: (_) => routeA
-    ));
+    await tester.pumpWidget(
+      new Directionality(
+        textDirection: TextDirection.ltr,
+        child: new Navigator(
+          key: navigatorKey,
+          onGenerateRoute: (_) => routeA
+        ),
+      ),
+    );
     final NavigatorState host = navigatorKey.currentState;
     await runNavigatorTest(
       tester,
@@ -397,4 +418,45 @@ void main() {
       ]
     );
   });
+
+  group('PageRouteObserver', () {
+    test('calls correct listeners', () {
+      final RouteObserver<PageRoute<dynamic>> observer = new RouteObserver<PageRoute<dynamic>>();
+      final RouteAware pageRouteAware1 = new MockRouteAware();
+      final MockPageRoute route1 = new MockPageRoute();
+      observer.subscribe(pageRouteAware1, route1);
+      verify(pageRouteAware1.didPush()).called(1);
+
+      final RouteAware pageRouteAware2 = new MockRouteAware();
+      final MockPageRoute route2 = new MockPageRoute();
+      observer.didPush(route2, route1);
+      verify(pageRouteAware1.didPushNext()).called(1);
+
+      observer.subscribe(pageRouteAware2, route2);
+      verify(pageRouteAware2.didPush()).called(1);
+
+      observer.didPop(route2, route1);
+      verify(pageRouteAware2.didPop()).called(1);
+      verify(pageRouteAware1.didPopNext()).called(1);
+    });
+
+    test('does not call listeners for non-PageRoute', () {
+      final RouteObserver<PageRoute<dynamic>> observer = new RouteObserver<PageRoute<dynamic>>();
+      final RouteAware pageRouteAware = new MockRouteAware();
+      final MockPageRoute pageRoute = new MockPageRoute();
+      final MockRoute route = new MockRoute();
+      observer.subscribe(pageRouteAware, pageRoute);
+      verify(pageRouteAware.didPush());
+
+      observer.didPush(route, pageRoute);
+      observer.didPop(route, pageRoute);
+      verifyNoMoreInteractions(pageRouteAware);
+    });
+  });
 }
+
+class MockPageRoute extends Mock implements PageRoute<dynamic> { }
+
+class MockRoute extends Mock implements Route<dynamic> { }
+
+class MockRouteAware extends Mock implements RouteAware { }

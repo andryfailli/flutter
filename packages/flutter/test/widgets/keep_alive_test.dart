@@ -43,12 +43,17 @@ List<Widget> generateList(Widget child) {
 
 void main() {
   testWidgets('KeepAlive with ListView with itemExtent', (WidgetTester tester) async {
-    await tester.pumpWidget(new ListView(
-      addAutomaticKeepAlives: false,
-      addRepaintBoundaries: false,
-      itemExtent: 12.3, // about 50 widgets visible
-      children: generateList(const Placeholder()),
-    ));
+    await tester.pumpWidget(
+      new Directionality(
+        textDirection: TextDirection.ltr,
+        child: new ListView(
+          addAutomaticKeepAlives: false,
+          addRepaintBoundaries: false,
+          itemExtent: 12.3, // about 50 widgets visible
+          children: generateList(const Placeholder()),
+        ),
+      ),
+    );
     expect(find.byKey(const GlobalObjectKey<_LeafState>(3)), findsOneWidget);
     expect(find.byKey(const GlobalObjectKey<_LeafState>(30)), findsOneWidget);
     expect(find.byKey(const GlobalObjectKey<_LeafState>(59)), findsNothing);
@@ -83,11 +88,16 @@ void main() {
   });
 
   testWidgets('KeepAlive with ListView without itemExtent', (WidgetTester tester) async {
-    await tester.pumpWidget(new ListView(
-      addAutomaticKeepAlives: false,
-      addRepaintBoundaries: false,
-      children: generateList(new Container(height: 12.3, child: const Placeholder())), // about 50 widgets visible
-    ));
+    await tester.pumpWidget(
+      new Directionality(
+        textDirection: TextDirection.ltr,
+        child: new ListView(
+          addAutomaticKeepAlives: false,
+          addRepaintBoundaries: false,
+          children: generateList(new Container(height: 12.3, child: const Placeholder())), // about 50 widgets visible
+        ),
+      ),
+    );
     expect(find.byKey(const GlobalObjectKey<_LeafState>(3)), findsOneWidget);
     expect(find.byKey(const GlobalObjectKey<_LeafState>(30)), findsOneWidget);
     expect(find.byKey(const GlobalObjectKey<_LeafState>(59)), findsNothing);
@@ -122,13 +132,18 @@ void main() {
   });
 
   testWidgets('KeepAlive with GridView', (WidgetTester tester) async {
-    await tester.pumpWidget(new GridView.count(
-      addAutomaticKeepAlives: false,
-      addRepaintBoundaries: false,
-      crossAxisCount: 2,
-      childAspectRatio: 400.0 / 24.6, // about 50 widgets visible
-      children: generateList(new Container(child: const Placeholder())),
-    ));
+    await tester.pumpWidget(
+      new Directionality(
+        textDirection: TextDirection.ltr,
+        child: new GridView.count(
+          addAutomaticKeepAlives: false,
+          addRepaintBoundaries: false,
+          crossAxisCount: 2,
+          childAspectRatio: 400.0 / 24.6, // about 50 widgets visible
+          children: generateList(new Container(child: const Placeholder())),
+        ),
+      ),
+    );
     expect(find.byKey(const GlobalObjectKey<_LeafState>(3)), findsOneWidget);
     expect(find.byKey(const GlobalObjectKey<_LeafState>(30)), findsOneWidget);
     expect(find.byKey(const GlobalObjectKey<_LeafState>(59)), findsNothing);
@@ -163,12 +178,17 @@ void main() {
   });
 
   testWidgets('KeepAlive render tree description', (WidgetTester tester) async {
-    await tester.pumpWidget(new ListView(
-      addAutomaticKeepAlives: false,
-      addRepaintBoundaries: false,
-      itemExtent: 400.0, // 2 visible children
-      children: generateList(const Placeholder()),
-    ));
+    await tester.pumpWidget(
+      new Directionality(
+        textDirection: TextDirection.ltr,
+        child: new ListView(
+          addAutomaticKeepAlives: false,
+          addRepaintBoundaries: false,
+          itemExtent: 400.0, // 2 visible children
+          children: generateList(const Placeholder()),
+        ),
+      ),
+    );
     // The important lines below are the ones marked with "<----"
     expect(tester.binding.renderView.toStringDeep(), equalsIgnoringHashCodes(
       'RenderView#00000\n'
@@ -180,7 +200,8 @@ void main() {
       ' └─child: RenderRepaintBoundary#00000\n'
       '   │ creator: RepaintBoundary ←\n'
       '   │   NotificationListener<ScrollNotification> ←\n'
-      '   │   GlowingOverscrollIndicator ← Scrollable ← ListView ← [root]\n'
+      '   │   GlowingOverscrollIndicator ← Scrollable ← ListView ←\n'
+      '   │   Directionality ← [root]\n'
       '   │ parentData: <none>\n'
       '   │ constraints: BoxConstraints(w=800.0, h=600.0)\n'
       '   │ layer: OffsetLayer#00000\n'
@@ -192,7 +213,8 @@ void main() {
       '   └─child: RenderCustomPaint#00000\n'
       '     │ creator: CustomPaint ← RepaintBoundary ←\n'
       '     │   NotificationListener<ScrollNotification> ←\n'
-      '     │   GlowingOverscrollIndicator ← Scrollable ← ListView ← [root]\n'
+      '     │   GlowingOverscrollIndicator ← Scrollable ← ListView ←\n'
+      '     │   Directionality ← [root]\n'
       '     │ parentData: <none> (can use size)\n'
       '     │ constraints: BoxConstraints(w=800.0, h=600.0)\n'
       '     │ size: Size(800.0, 600.0)\n'
@@ -200,7 +222,8 @@ void main() {
       '     └─child: RenderRepaintBoundary#00000\n'
       '       │ creator: RepaintBoundary ← CustomPaint ← RepaintBoundary ←\n'
       '       │   NotificationListener<ScrollNotification> ←\n'
-      '       │   GlowingOverscrollIndicator ← Scrollable ← ListView ← [root]\n'
+      '       │   GlowingOverscrollIndicator ← Scrollable ← ListView ←\n'
+      '       │   Directionality ← [root]\n'
       '       │ parentData: <none> (can use size)\n'
       '       │ constraints: BoxConstraints(w=800.0, h=600.0)\n'
       '       │ layer: OffsetLayer#00000\n'
@@ -214,19 +237,21 @@ void main() {
       '         │   RawGestureDetector-[LabeledGlobalKey<RawGestureDetectorState>#00000]\n'
       '         │   ← RepaintBoundary ← CustomPaint ← RepaintBoundary ←\n'
       '         │   NotificationListener<ScrollNotification> ←\n'
-      '         │   GlowingOverscrollIndicator ← Scrollable ← ListView ← [root]\n'
+      '         │   GlowingOverscrollIndicator ← Scrollable ← ListView ←\n'
+      '         │   Directionality ← [root]\n'
       '         │ parentData: <none> (can use size)\n'
       '         │ constraints: BoxConstraints(w=800.0, h=600.0)\n'
       '         │ semantic boundary\n'
       '         │ size: Size(800.0, 600.0)\n'
-      '         │ gestures: horizontal scroll, vertical scroll\n'
+      '         │ gestures: vertical scroll\n'
       '         │\n'
       '         └─child: RenderPointerListener#00000\n'
       '           │ creator: Listener ← _GestureSemantics ←\n'
       '           │   RawGestureDetector-[LabeledGlobalKey<RawGestureDetectorState>#00000]\n'
       '           │   ← RepaintBoundary ← CustomPaint ← RepaintBoundary ←\n'
       '           │   NotificationListener<ScrollNotification> ←\n'
-      '           │   GlowingOverscrollIndicator ← Scrollable ← ListView ← [root]\n'
+      '           │   GlowingOverscrollIndicator ← Scrollable ← ListView ←\n'
+      '           │   Directionality ← [root]\n'
       '           │ parentData: <none> (can use size)\n'
       '           │ constraints: BoxConstraints(w=800.0, h=600.0)\n'
       '           │ size: Size(800.0, 600.0)\n'
@@ -239,7 +264,8 @@ void main() {
       '             │   RawGestureDetector-[LabeledGlobalKey<RawGestureDetectorState>#00000]\n'
       '             │   ← RepaintBoundary ← CustomPaint ← RepaintBoundary ←\n'
       '             │   NotificationListener<ScrollNotification> ←\n'
-      '             │   GlowingOverscrollIndicator ← Scrollable ← ListView ← [root]\n'
+      '             │   GlowingOverscrollIndicator ← Scrollable ← ListView ←\n'
+      '             │   Directionality ← ⋯\n'
       '             │ parentData: <none> (can use size)\n'
       '             │ constraints: BoxConstraints(w=800.0, h=600.0)\n'
       '             │ size: Size(800.0, 600.0)\n'
@@ -258,7 +284,8 @@ void main() {
       '               │ constraints: BoxConstraints(w=800.0, h=600.0)\n'
       '               │ layer: OffsetLayer#00000\n'
       '               │ size: Size(800.0, 600.0)\n'
-      '               │ AxisDirection.down\n'
+      '               │ axisDirection: down\n'
+      '               │ crossAxisDirection: right\n'
       '               │ offset: ScrollPositionWithSingleContext#00000(offset: 0.0, range:\n'
       '               │   0.0..39400.0, viewport: 600.0, ScrollableState,\n'
       '               │   AlwaysScrollableScrollPhysics -> ClampingScrollPhysics,\n'
@@ -277,9 +304,10 @@ void main() {
       '                 │ constraints: SliverConstraints(AxisDirection.down,\n'
       '                 │   GrowthDirection.forward, ScrollDirection.idle, scrollOffset:\n'
       '                 │   0.0, remainingPaintExtent: 600.0, crossAxisExtent: 800.0,\n'
+      '                 │   crossAxisDirection: AxisDirection.right,\n'
       '                 │   viewportMainAxisExtent: 600.0)\n'
       '                 │ geometry: SliverGeometry(scrollExtent: 40000.0, paintExtent:\n'
-      '                 │   600.0, maxPaintExtent: 40000.0, hasVisualOverflow: true, )\n'
+      '                 │   600.0, maxPaintExtent: 40000.0, hasVisualOverflow: true)\n'
       '                 │ currently live children: 0 to 1\n'
       '                 │\n'
       '                 ├─child with index 0: RenderLimitedBox#00000\n'
@@ -333,7 +361,6 @@ void main() {
       '                       parentData: <none> (can use size)\n'
       '                       constraints: BoxConstraints(w=800.0, h=400.0)\n'
       '                       size: Size(800.0, 400.0)\n'
-      '' // TODO(ianh): remove blank line
     ));
     const GlobalObjectKey<_LeafState>(0).currentState.setKeepAlive(true);
     await tester.drag(find.byType(ListView), const Offset(0.0, -1000.0));
@@ -351,7 +378,8 @@ void main() {
       ' └─child: RenderRepaintBoundary#00000\n'
       '   │ creator: RepaintBoundary ←\n'
       '   │   NotificationListener<ScrollNotification> ←\n'
-      '   │   GlowingOverscrollIndicator ← Scrollable ← ListView ← [root]\n'
+      '   │   GlowingOverscrollIndicator ← Scrollable ← ListView ←\n'
+      '   │   Directionality ← [root]\n'
       '   │ parentData: <none>\n'
       '   │ constraints: BoxConstraints(w=800.0, h=600.0)\n'
       '   │ layer: OffsetLayer#00000\n'
@@ -363,7 +391,8 @@ void main() {
       '   └─child: RenderCustomPaint#00000\n'
       '     │ creator: CustomPaint ← RepaintBoundary ←\n'
       '     │   NotificationListener<ScrollNotification> ←\n'
-      '     │   GlowingOverscrollIndicator ← Scrollable ← ListView ← [root]\n'
+      '     │   GlowingOverscrollIndicator ← Scrollable ← ListView ←\n'
+      '     │   Directionality ← [root]\n'
       '     │ parentData: <none> (can use size)\n'
       '     │ constraints: BoxConstraints(w=800.0, h=600.0)\n'
       '     │ size: Size(800.0, 600.0)\n'
@@ -371,7 +400,8 @@ void main() {
       '     └─child: RenderRepaintBoundary#00000\n'
       '       │ creator: RepaintBoundary ← CustomPaint ← RepaintBoundary ←\n'
       '       │   NotificationListener<ScrollNotification> ←\n'
-      '       │   GlowingOverscrollIndicator ← Scrollable ← ListView ← [root]\n'
+      '       │   GlowingOverscrollIndicator ← Scrollable ← ListView ←\n'
+      '       │   Directionality ← [root]\n'
       '       │ parentData: <none> (can use size)\n'
       '       │ constraints: BoxConstraints(w=800.0, h=600.0)\n'
       '       │ layer: OffsetLayer#00000\n'
@@ -385,19 +415,21 @@ void main() {
       '         │   RawGestureDetector-[LabeledGlobalKey<RawGestureDetectorState>#00000]\n'
       '         │   ← RepaintBoundary ← CustomPaint ← RepaintBoundary ←\n'
       '         │   NotificationListener<ScrollNotification> ←\n'
-      '         │   GlowingOverscrollIndicator ← Scrollable ← ListView ← [root]\n'
+      '         │   GlowingOverscrollIndicator ← Scrollable ← ListView ←\n'
+      '         │   Directionality ← [root]\n'
       '         │ parentData: <none> (can use size)\n'
       '         │ constraints: BoxConstraints(w=800.0, h=600.0)\n'
       '         │ semantic boundary\n'
       '         │ size: Size(800.0, 600.0)\n'
-      '         │ gestures: horizontal scroll, vertical scroll\n'
+      '         │ gestures: vertical scroll\n'
       '         │\n'
       '         └─child: RenderPointerListener#00000\n'
       '           │ creator: Listener ← _GestureSemantics ←\n'
       '           │   RawGestureDetector-[LabeledGlobalKey<RawGestureDetectorState>#00000]\n'
       '           │   ← RepaintBoundary ← CustomPaint ← RepaintBoundary ←\n'
       '           │   NotificationListener<ScrollNotification> ←\n'
-      '           │   GlowingOverscrollIndicator ← Scrollable ← ListView ← [root]\n'
+      '           │   GlowingOverscrollIndicator ← Scrollable ← ListView ←\n'
+      '           │   Directionality ← [root]\n'
       '           │ parentData: <none> (can use size)\n'
       '           │ constraints: BoxConstraints(w=800.0, h=600.0)\n'
       '           │ size: Size(800.0, 600.0)\n'
@@ -410,7 +442,8 @@ void main() {
       '             │   RawGestureDetector-[LabeledGlobalKey<RawGestureDetectorState>#00000]\n'
       '             │   ← RepaintBoundary ← CustomPaint ← RepaintBoundary ←\n'
       '             │   NotificationListener<ScrollNotification> ←\n'
-      '             │   GlowingOverscrollIndicator ← Scrollable ← ListView ← [root]\n'
+      '             │   GlowingOverscrollIndicator ← Scrollable ← ListView ←\n'
+      '             │   Directionality ← ⋯\n'
       '             │ parentData: <none> (can use size)\n'
       '             │ constraints: BoxConstraints(w=800.0, h=600.0)\n'
       '             │ size: Size(800.0, 600.0)\n'
@@ -429,7 +462,8 @@ void main() {
       '               │ constraints: BoxConstraints(w=800.0, h=600.0)\n'
       '               │ layer: OffsetLayer#00000\n'
       '               │ size: Size(800.0, 600.0)\n'
-      '               │ AxisDirection.down\n'
+      '               │ axisDirection: down\n'
+      '               │ crossAxisDirection: right\n'
       '               │ offset: ScrollPositionWithSingleContext#00000(offset: 2000.0,\n'
       '               │   range: 0.0..39400.0, viewport: 600.0, ScrollableState,\n'
       '               │   AlwaysScrollableScrollPhysics -> ClampingScrollPhysics,\n'
@@ -448,9 +482,10 @@ void main() {
       '                 │ constraints: SliverConstraints(AxisDirection.down,\n'
       '                 │   GrowthDirection.forward, ScrollDirection.idle, scrollOffset:\n'
       '                 │   2000.0, remainingPaintExtent: 600.0, crossAxisExtent: 800.0,\n'
+      '                 │   crossAxisDirection: AxisDirection.right,\n'
       '                 │   viewportMainAxisExtent: 600.0)\n'
       '                 │ geometry: SliverGeometry(scrollExtent: 40000.0, paintExtent:\n'
-      '                 │   600.0, maxPaintExtent: 40000.0, hasVisualOverflow: true, )\n'
+      '                 │   600.0, maxPaintExtent: 40000.0, hasVisualOverflow: true)\n'
       '                 │ currently live children: 5 to 6\n'
       '                 │\n'
       '                 ├─child with index 5: RenderLimitedBox#00000\n'                                       // <----- this is index 5, not 0
@@ -505,7 +540,7 @@ void main() {
       '                 ╎     constraints: BoxConstraints(w=800.0, h=400.0)\n'
       '                 ╎     size: Size(800.0, 400.0)\n'
       '                 ╎\n'
-      '                 ├─child with index 0 (kept alive offstage): RenderLimitedBox#00000\n'                 // <----- this one is index 0 and is marked as being offstage
+      '                 ╎╌child with index 0 (kept alive offstage): RenderLimitedBox#00000\n'                 // <----- this one is index 0 and is marked as being offstage
       '                 ╎ │ creator: LimitedBox ← Placeholder ← KeepAlive ←\n'
       '                 ╎ │   Leaf-[GlobalObjectKey<_LeafState> int#00000] ←\n'
       '                 ╎ │   SliverFixedExtentList ← Viewport ← _ScrollableScope ←\n'
@@ -531,7 +566,7 @@ void main() {
       '                 ╎     constraints: BoxConstraints(w=800.0, h=400.0)\n'
       '                 ╎     size: Size(800.0, 400.0)\n'
       '                 ╎\n'                                                                                  // <----- dashed line ends here
-      '                 └─child with index 3 (kept alive offstage): RenderLimitedBox#00000\n'
+      '                 └╌child with index 3 (kept alive offstage): RenderLimitedBox#00000\n'
       '                   │ creator: LimitedBox ← Placeholder ← KeepAlive ←\n'
       '                   │   Leaf-[GlobalObjectKey<_LeafState> int#00000] ←\n'
       '                   │   SliverFixedExtentList ← Viewport ← _ScrollableScope ←\n'

@@ -76,11 +76,11 @@ main ways to run it. In either case you will want to run `flutter update-package
 first, or you will get version conflict issues or bogus error messages about core clases like
 Offset from `dart:ui`.
 
-For a one-off, use `flutter analyze --flutter-repo`. This uses the `.analysis_options_repo` file
+For a one-off, use `flutter analyze --flutter-repo`. This uses the `analysis_options_repo.yaml` file
 at the root of the repository for its configuration.
 
 For continuous analysis, use `flutter analyze --flutter-repo --watch`. This uses normal
-`.analysis_options` files, and they can differ from package to package.
+`analysis_options.yaml` files, and they can differ from package to package.
 
 If you want to see how many members are missing dartdocs, you should use the first option,
 providing the additional command `--dartdocs`.
@@ -130,11 +130,14 @@ you run `flutter upgrade`. If you want to alter and re-test the tool's behavior 
 locally commit your tool changes in git and the tool will be rebuilt from Dart sources
 in `packages/flutter_tools` the next time you run `flutter`.
 
+Alternatively, delete the `bin/cache/flutter_tools.snapshot` file. Doing so will
+force a rebuild of the tool from your local sources the next time you run `flutter`.
+
 flutter_tools' tests run inside the Dart command line VM rather than in the
 flutter shell. To run the test:
 
 * `cd packages/flutter_tools`
-* `dart --checked test/all.dart`
+* `pub run test -j1`
 
 The pre-built flutter tool runs in release mode with the observatory off by default.
 To enable debugging mode and the observatory on the `flutter` tool, uncomment the
@@ -167,13 +170,15 @@ To send us a pull request:
 
 Please make sure all your checkins have detailed commit messages explaining the patch.
 
-Once you've gotten an LGTM from a project maintainer, submit your changes to the
-`master` branch using one of the following methods:
+Once you've gotten an LGTM from a project maintainer and once your PR has received
+the green light from all our automated testing (Travis, Appveyor, etc), and once
+the tree is green (see the [design principles](https://flutter.io/design-principles/)
+document for more details), submit your changes to the `master` branch using one of
+the following methods:
 
 * Wait for one of the project maintainers to submit it for you.
 * Click the green "Merge pull request" button on the GitHub UI of your pull
   request (requires commit access)
-* `git push upstream name_of_your_branch:master` (requires commit access)
 
 You must complete the
 [Contributor License Agreement](https://cla.developers.google.com/clas).
@@ -238,6 +243,11 @@ the following steps.
 3. To run tests on your host machine, build one of the host configurations
    (e.g., `out/host_debug_unopt`). To run examples on Android, build one of the
    Android configurations (e.g., `out/android_debug_unopt`).
+   When running on the device with `--preview-dart-2` flag you will still need
+   to build corresponding host configuration (e.g., `out/host_debug_unopt` if you
+   are using `out/android_debug_unopt`, `out/host_release` if you use `out/android_release`).
+   Host configuration provides standalone dart sdk for the engine, that is used
+   to run engine dart scripts on the host.
 
 You should now be able to run the tests against your locally built
 engine using the `flutter test --local-engine=host_debug_unopt` command. To run

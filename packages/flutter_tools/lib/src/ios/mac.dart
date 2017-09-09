@@ -21,8 +21,8 @@ import '../flx.dart' as flx;
 import '../globals.dart';
 import '../plugins.dart';
 import '../services.dart';
+import 'cocoapods.dart';
 import 'code_signing.dart';
-import 'ios_workflow.dart';
 import 'xcodeproj.dart';
 
 const int kXcodeRequiredVersionMajor = 8;
@@ -68,6 +68,28 @@ class IMobileDevice {
 
     // Check that we can look up the names of any attached devices.
     return await exitsHappyAsync(<String>['idevicename']);
+  }
+
+  Future<String> getAvailableDeviceIDs() async {
+    try {
+      final ProcessResult result = await processManager.run(<String>['idevice_id', '-l']);
+      if (result.exitCode != 0)
+        throw new ToolExit('idevice_id returned an error:\n${result.stderr}');
+      return result.stdout;
+    } on ProcessException {
+      throw new ToolExit('Failed to invoke idevice_id. Run flutter doctor.');
+    }
+  }
+
+  Future<String> getInfoForDevice(String deviceID, String key) async {
+    try {
+      final ProcessResult result = await processManager.run(<String>['ideviceinfo', '-u', deviceID, '-k', key,]);
+      if (result.exitCode != 0)
+        throw new ToolExit('idevice_id returned an error:\n${result.stderr}');
+      return result.stdout.trim();
+    } on ProcessException {
+      throw new ToolExit('Failed to invoke idevice_id. Run flutter doctor.');
+    }
   }
 
   /// Starts `idevicesyslog` and returns the running process.
@@ -164,18 +186,6 @@ class Xcode {
       return false;
     return _xcodeVersionCheckValid(xcodeMajorVersion, xcodeMinorVersion);
   }
-
-  Future<String> getAvailableDevices() async {
-    try {
-      final ProcessResult result = await processManager.run(
-          <String>['/usr/bin/instruments', '-s', 'devices']);
-      if (result.exitCode != 0)
-        throw new ToolExit('/usr/bin/instruments returned an error:\n${result.stderr}');
-      return result.stdout;
-    } on ProcessException {
-      throw new ToolExit('Failed to invoke /usr/bin/instruments. Is Xcode installed?');
-    }
-  }
 }
 
 bool _xcodeVersionCheckValid(int major, int minor) {
@@ -190,7 +200,7 @@ bool _xcodeVersionCheckValid(int major, int minor) {
 
 Future<XcodeBuildResult> buildXcodeProject({
   BuildableIOSApp app,
-  BuildMode mode,
+  BuildInfo buildInfo,
   String target: flx.defaultMainPath,
   bool buildForDevice,
   bool codesign: true,
@@ -201,6 +211,35 @@ Future<XcodeBuildResult> buildXcodeProject({
 
   if (!kPythonSix.isInstalled) {
     printError(kPythonSix.errorMessage);
+    return new XcodeBuildResult(success: false);
+  }
+
+  final XcodeProjectInfo projectInfo = new XcodeProjectInfo.fromProjectSync(app.appDirectory);
+  if (!projectInfo.targets.contains('Runner')) {
+    printError('The Xcode project does not define target "Runner" which is needed by Flutter tooling.');
+    printError('Open Xcode to fix the problem:');
+    printError('  open ios/Runner.xcworkspace');
+    return new XcodeBuildResult(success: false);
+  }
+  final String scheme = projectInfo.schemeFor(buildInfo);
+  if (scheme == null) {
+    printError('');
+    if (projectInfo.definesCustomSchemes) {
+      printError('The Xcode project defines schemes: ${projectInfo.schemes.join(', ')}');
+      printError('You must specify a --flavor option to select one of them.');
+    } else {
+      printError('The Xcode project does not define custom schemes.');
+      printError('You cannot use the --flavor option.');
+    }
+    return new XcodeBuildResult(success: false);
+  }
+  final String configuration = projectInfo.buildConfigurationFor(buildInfo, scheme);
+  if (configuration == null) {
+    printError('');
+    printError('The Xcode project defines build configurations: ${projectInfo.buildConfigurations.join(', ')}');
+    printError('Flutter expects a build configuration named ${XcodeProjectInfo.expectedBuildConfigurationFor(buildInfo, scheme)} or similar.');
+    printError('Open Xcode to fix the problem:');
+    printError('  open ios/Runner.xcworkspace');
     return new XcodeBuildResult(success: false);
   }
 
@@ -215,11 +254,15 @@ Future<XcodeBuildResult> buildXcodeProject({
   final bool hasFlutterPlugins = injectPlugins();
 
   if (hasFlutterPlugins)
-    await _runPodInstall(appDirectory, flutterFrameworkDir(mode));
+    await cocoaPods.processPods(
+      appIosDir: appDirectory,
+      iosEngineDir: flutterFrameworkDir(buildInfo.mode),
+      isSwift: app.isSwift,
+    );
 
   updateXcodeGeneratedProperties(
     projectPath: fs.currentDirectory.path,
-    mode: mode,
+    buildInfo: buildInfo,
     target: target,
     hasPlugins: hasFlutterPlugins
   );
@@ -230,7 +273,7 @@ Future<XcodeBuildResult> buildXcodeProject({
     'xcodebuild',
     'clean',
     'build',
-    '-configuration', 'Release',
+    '-configuration', configuration,
     'ONLY_ACTIVE_ARCH=YES',
   ];
 
@@ -242,7 +285,7 @@ Future<XcodeBuildResult> buildXcodeProject({
     if (fs.path.extension(entity.path) == '.xcworkspace') {
       commands.addAll(<String>[
         '-workspace', fs.path.basename(entity.path),
-        '-scheme', fs.path.basenameWithoutExtension(entity.path),
+        '-scheme', scheme,
         "BUILD_DIR=${fs.path.absolute(getIosBuildDirectory())}",
       ]);
       break;
@@ -272,7 +315,6 @@ Future<XcodeBuildResult> buildXcodeProject({
     allowReentrantFlutter: true
   );
   status.stop();
-
   if (result.exitCode != 0) {
     printStatus('Failed to build iOS app');
     if (result.stderr.isNotEmpty) {
@@ -294,13 +336,18 @@ Future<XcodeBuildResult> buildXcodeProject({
       ),
     );
   } else {
-    // Look for 'clean build/Release-iphoneos/Runner.app'.
-    final RegExp regexp = new RegExp(r' clean (\S*\.app)$', multiLine: true);
+    // Look for 'clean build/<configuration>-<sdk>/Runner.app'.
+    final RegExp regexp = new RegExp(r' clean (.*\.app)$', multiLine: true);
     final Match match = regexp.firstMatch(result.stdout);
     String outputDir;
-    if (match != null)
-      outputDir = fs.path.join(app.appDirectory, match.group(1));
-    return new XcodeBuildResult(success:true, output: outputDir);
+    if (match != null) {
+      final String actualOutputDir = match.group(1).replaceAll('\\ ', ' ');
+      // Copy app folder to a place where other tools can find it without knowing
+      // the BuildInfo.
+      outputDir = actualOutputDir.replaceFirst('/$configuration-', '/');
+      copyDirectorySync(fs.directory(actualOutputDir), fs.directory(outputDir));
+    }
+    return new XcodeBuildResult(success: true, output: outputDir);
   }
 }
 
@@ -322,7 +369,9 @@ Future<Null> diagnoseXcodeBuildFailure(XcodeBuildResult result, BuildableIOSApp 
     printError(noDevelopmentTeamInstruction, emphasis: true);
     return;
   }
-  if (app.id?.contains('com.yourcompany') ?? false) {
+  if (result.xcodeBuildExecution != null &&
+      result.xcodeBuildExecution.buildForPhysicalDevice &&
+      app.id?.contains('com.yourcompany') ?? false) {
     printError('');
     printError('It appears that your application still contains the default signing identifier.');
     printError("Try replacing 'com.yourcompany' with your signing id in Xcode:");
@@ -394,67 +443,6 @@ bool _checkXcodeVersion() {
     return false;
   }
   return true;
-}
-
-final String noCocoaPodsConsequence = '''
-  CocoaPods is used to retrieve the iOS platform side's plugin code that responds to your plugin usage on the Dart side.
-  Without resolving iOS dependencies with CocoaPods, plugins will not work on iOS.
-  For more info, see https://flutter.io/platform-plugins''';
-
-final String cocoaPodsInstallInstructions = '''
-  brew update
-  brew install cocoapods
-  pod setup''';
-
-final String cocoaPodsUpgradeInstructions = '''
-  brew update
-  brew upgrade cocoapods
-  pod setup''';
-
-Future<Null> _runPodInstall(Directory bundle, String engineDirectory) async {
-  if (fs.file(fs.path.join(bundle.path, 'Podfile')).existsSync()) {
-    if (!await iosWorkflow.isCocoaPodsInstalledAndMeetsVersionCheck) {
-      final String minimumVersion = iosWorkflow.cocoaPodsMinimumVersion;
-      printError(
-        'Warning: CocoaPods version $minimumVersion or greater not installed. Skipping pod install.\n'
-        '$noCocoaPodsConsequence\n'
-        'To install:\n'
-        '$cocoaPodsInstallInstructions\n',
-        emphasis: true,
-      );
-      return;
-    }
-    if (!await iosWorkflow.isCocoaPodsInitialized) {
-      printError(
-        'Warning: CocoaPods installed but not initialized. Skipping pod install.\n'
-        '$noCocoaPodsConsequence\n'
-        'To initialize CocoaPods, run:\n'
-        '  pod setup\n'
-        'once to finalize CocoaPods\' installation.',
-        emphasis: true,
-      );
-      return;
-    }
-    final Status status = logger.startProgress('Running pod install...', expectSlowOperation: true);
-    final ProcessResult result = await processManager.run(
-      <String>['pod', 'install', '--verbose'],
-      workingDirectory: bundle.path,
-      environment: <String, String>{'FLUTTER_FRAMEWORK_DIR': engineDirectory},
-    );
-    status.stop();
-    if (logger.isVerbose || result.exitCode != 0) {
-      if (result.stdout.isNotEmpty) {
-        printStatus('CocoaPods\' output:\n↳');
-        printStatus(result.stdout, indent: 4);
-      }
-      if (result.stderr.isNotEmpty) {
-        printStatus('Error output from CocoaPods:\n↳');
-        printStatus(result.stderr, indent: 4);
-      }
-    }
-    if (result.exitCode != 0)
-      throwToolExit('Error running pod install');
-  }
 }
 
 Future<Null> _addServicesToBundle(Directory bundle) async {

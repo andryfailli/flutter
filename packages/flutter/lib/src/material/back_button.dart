@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 
 import 'icon_button.dart';
 import 'icons.dart';
+import 'material_localizations.dart';
 import 'theme.dart';
 
 /// A "back" icon that's appropriate for the current [TargetPlatform].
@@ -59,7 +60,8 @@ class BackButtonIcon extends StatelessWidget {
 /// See also:
 ///
 ///  * [AppBar], which automatically uses a [BackButton] in its
-///    [AppBar.leading] slot when appropriate.
+///    [AppBar.leading] slot when the [Scaffold] has no [Drawer] and the
+///    current [Route] is not the [Navigator]'s first route.
 ///  * [BackButtonIcon], which is useful if you need to create a back button
 ///    that responds differently to being pressed.
 ///  * [IconButton], which is a more general widget for creating buttons with
@@ -82,7 +84,7 @@ class BackButton extends StatelessWidget {
     return new IconButton(
       icon: const BackButtonIcon(),
       color: color,
-      tooltip: 'Back', // TODO(ianh): Figure out how to localize this string
+      tooltip: MaterialLocalizations.of(context).backButtonTooltip,
       onPressed: () {
         Navigator.of(context).maybePop();
       }
@@ -114,7 +116,7 @@ class CloseButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return new IconButton(
       icon: const Icon(Icons.close),
-      tooltip: 'Close', // TODO(ianh): Figure out how to localize this string
+      tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
       onPressed: () {
         Navigator.of(context).maybePop();
       },

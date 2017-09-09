@@ -224,8 +224,11 @@ class BuildableIOSApp extends IOSApp {
   @override
   String get deviceBundlePath => _buildAppPath('iphoneos');
 
+  /// True if the app is built from a Swift project. Null if unknown.
+  bool get isSwift => buildSettings?.containsKey('SWIFT_VERSION');
+
   String _buildAppPath(String type) {
-    return fs.path.join(getIosBuildDirectory(), 'Release-$type', kBundleName);
+    return fs.path.join(getIosBuildDirectory(), type, kBundleName);
   }
 }
 

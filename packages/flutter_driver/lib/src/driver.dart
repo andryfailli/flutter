@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:file/file.dart' as f;
+import 'package:json_rpc_2/error_code.dart' as error_code;
 import 'package:json_rpc_2/json_rpc_2.dart' as rpc;
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
@@ -113,11 +114,15 @@ class FlutterDriver {
   /// Creates a driver that uses a connection provided by the given
   /// [_serviceClient], [_peer] and [_appIsolate].
   @visibleForTesting
-  FlutterDriver.connectedTo(this._serviceClient, this._peer, this._appIsolate,
-      { bool printCommunication: false, bool logCommunicationToFile: true })
-      : _printCommunication = printCommunication,
-        _logCommunicationToFile = logCommunicationToFile,
-        _driverId = _nextDriverId++;
+  FlutterDriver.connectedTo(
+    this._serviceClient,
+    this._peer,
+    this._appIsolate, {
+    bool printCommunication: false,
+    bool logCommunicationToFile: true,
+  }) : _printCommunication = printCommunication,
+       _logCommunicationToFile = logCommunicationToFile,
+       _driverId = _nextDriverId++;
 
   static const String _kFlutterExtensionMethod = 'ext.flutter.driver';
   static const String _kSetVMTimelineFlagsMethod = '_setVMTimelineFlags';
@@ -203,29 +208,30 @@ class FlutterDriver {
       });
     }
 
+    /// Waits for a signal from the VM service that the extension is registered.
+    /// Returns [_kFlutterExtensionMethod]
+    Future<String> waitForServiceExtension() {
+      return isolate.onExtensionAdded.firstWhere((String extension) {
+        return extension == _kFlutterExtensionMethod;
+      });
+    }
+
+    /// Tells the Dart VM Service to notify us about "Isolate" events.
+    ///
+    /// This is a workaround for an issue in package:vm_service_client, which
+    /// subscribes to the "Isolate" stream lazily upon subscription, which
+    /// results in lost events.
+    ///
+    /// Details: https://github.com/dart-lang/vm_service_client/issues/17
+    Future<Null> enableIsolateStreams() async {
+      await connection.peer.sendRequest('streamListen', <String, String>{
+        'streamId': 'Isolate',
+      });
+    }
+
     // Attempt to resume isolate if it was paused
     if (isolate.pauseEvent is VMPauseStartEvent) {
       _log.trace('Isolate is paused at start.');
-
-      // Waits for a signal from the VM service that the extension is registered
-      Future<String> waitForServiceExtension() {
-        return isolate.onExtensionAdded.firstWhere((String extension) {
-          return extension == _kFlutterExtensionMethod;
-        });
-      }
-
-      /// Tells the Dart VM Service to notify us about "Isolate" events.
-      ///
-      /// This is a workaround for an issue in package:vm_service_client, which
-      /// subscribes to the "Isolate" stream lazily upon subscription, which
-      /// results in lost events.
-      ///
-      /// Details: https://github.com/dart-lang/vm_service_client/issues/17
-      Future<Null> enableIsolateStreams() async {
-        await connection.peer.sendRequest('streamListen', <String, String>{
-          'streamId': 'Isolate',
-        });
-      }
 
       // If the isolate is paused at the start, e.g. via the --start-paused
       // option, then the VM service extension is not registered yet. Wait for
@@ -265,8 +271,27 @@ class FlutterDriver {
       );
     }
 
-    // At this point the service extension must be installed. Verify it.
-    final Health health = await driver.checkHealth();
+    // Invoked checkHealth and try to fix delays in the registration of Service
+    // extensions
+    Future<Health> checkHealth() async {
+      try {
+        // At this point the service extension must be installed. Verify it.
+        return await driver.checkHealth();
+      } on rpc.RpcException catch (e) {
+        if (e.code != error_code.METHOD_NOT_FOUND) {
+          rethrow;
+        }
+        _log.trace(
+          'Check Health failed, try to wait for the service extensions to be'
+          'registered.'
+        );
+        await enableIsolateStreams();
+        await waitForServiceExtension().timeout(_kLongTimeout * 2);
+        return driver.checkHealth();
+      }
+    }
+
+    final Health health = await checkHealth();
     if (health.status != HealthStatus.ok) {
       await client.close();
       throw new DriverError('Flutter application health check failed.');
@@ -345,6 +370,12 @@ class FlutterDriver {
   /// Waits until [finder] locates the target.
   Future<Null> waitFor(SerializableFinder finder, {Duration timeout}) async {
     await _sendCommand(new WaitFor(finder, timeout: timeout));
+    return null;
+  }
+
+  /// Waits until [finder] can no longer locate the target.
+  Future<Null> waitForAbsent(SerializableFinder finder, {Duration timeout}) async {
+    await _sendCommand(new WaitForAbsent(finder, timeout: timeout));
     return null;
   }
 
@@ -597,9 +628,12 @@ class CommonFinders {
   /// Finds [Text] widgets containing string equal to [text].
   SerializableFinder text(String text) => new ByText(text);
 
-  /// Finds widgets by [key].
+  /// Finds widgets by [key]. Only [String] and [int] values can be used.
   SerializableFinder byValueKey(dynamic key) => new ByValueKey(key);
 
   /// Finds widgets with a tooltip with the given [message].
   SerializableFinder byTooltip(String message) => new ByTooltipMessage(message);
+
+  /// Finds widgets whose class name matches the given string.
+  SerializableFinder byType(String type) => new ByType(type);
 }

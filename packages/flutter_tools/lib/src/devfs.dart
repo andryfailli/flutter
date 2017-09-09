@@ -12,11 +12,10 @@ import 'base/context.dart';
 import 'base/file_system.dart';
 import 'base/io.dart';
 import 'build_info.dart';
+import 'compile.dart';
 import 'dart/package_map.dart';
 import 'globals.dart';
 import 'vmservice.dart';
-
-typedef void DevFSProgressReporter(int progress, int max);
 
 class DevFSConfig {
   /// Should DevFS assume that symlink targets are stable?
@@ -240,23 +239,18 @@ class _DevFSHttpWriter {
   Map<Uri, DevFSContent> _outstanding;
   Completer<Null> _completer;
   HttpClient _client;
-  int _done;
-  int _max;
 
-  Future<Null> write(Map<Uri, DevFSContent> entries,
-                     {DevFSProgressReporter progressReporter}) async {
+  Future<Null> write(Map<Uri, DevFSContent> entries) async {
     _client = new HttpClient();
     _client.maxConnectionsPerHost = kMaxInFlight;
     _completer = new Completer<Null>();
     _outstanding = new Map<Uri, DevFSContent>.from(entries);
-    _done = 0;
-    _max = _outstanding.length;
-    _scheduleWrites(progressReporter);
+    _scheduleWrites();
     await _completer.future;
     _client.close();
   }
 
-  void _scheduleWrites(DevFSProgressReporter progressReporter) {
+  void _scheduleWrites() {
     while (_inFlight < kMaxInFlight) {
       if (_outstanding.isEmpty) {
         // Finished.
@@ -264,15 +258,14 @@ class _DevFSHttpWriter {
       }
       final Uri deviceUri = _outstanding.keys.first;
       final DevFSContent content = _outstanding.remove(deviceUri);
-      _scheduleWrite(deviceUri, content, progressReporter);
+      _scheduleWrite(deviceUri, content);
       _inFlight++;
     }
   }
 
   Future<Null> _scheduleWrite(
     Uri deviceUri,
-    DevFSContent content,
-    DevFSProgressReporter progressReporter, [
+    DevFSContent content, [
     int retry = 0,
   ]) async {
     try {
@@ -293,21 +286,17 @@ class _DevFSHttpWriter {
     } catch (e) {
       if (retry < kMaxRetries) {
         printTrace('Retrying writing "$deviceUri" to DevFS due to error: $e');
-        _scheduleWrite(deviceUri, content, progressReporter, retry + 1);
+        _scheduleWrite(deviceUri, content, retry + 1);
         return;
       } else {
         printError('Error writing "$deviceUri" to DevFS: $e');
       }
     }
-    if (progressReporter != null) {
-      _done++;
-      progressReporter(_done, _max);
-    }
     _inFlight--;
     if ((_outstanding.isEmpty) && (_inFlight == 0)) {
       _completer.complete(null);
     } else {
-      _scheduleWrites(progressReporter);
+      _scheduleWrites();
     }
   }
 }
@@ -372,10 +361,14 @@ class DevFS {
   }
 
   /// Update files on the device and return the number of bytes sync'd
-  Future<int> update({ DevFSProgressReporter progressReporter,
-                           AssetBundle bundle,
-                           bool bundleDirty: false,
-                           Set<String> fileFilter}) async {
+  Future<int> update({
+    String mainPath,
+    String target,
+    AssetBundle bundle,
+    bool bundleDirty: false,
+    Set<String> fileFilter,
+    ResidentCompiler generator,
+  }) async {
     // Mark all entries as possibly deleted.
     for (DevFSContent content in _entries.values) {
       content._exists = false;
@@ -438,10 +431,21 @@ class DevFS {
     });
     if (dirtyEntries.isNotEmpty) {
       printTrace('Updating files');
+      if (generator != null) {
+        final List<String> invalidatedFiles = <String>[];
+        dirtyEntries.forEach((Uri deviceUri, DevFSContent content) {
+          if (content is DevFSFileContent)
+            invalidatedFiles.add(content.file.uri.toString());
+        });
+        final String compiledBinary = await generator.recompile(mainPath, invalidatedFiles);
+        if (compiledBinary != null && compiledBinary.isNotEmpty)
+          dirtyEntries.putIfAbsent(Uri.parse(target + '.dill'),
+                  () => new DevFSFileContent(fs.file(compiledBinary)));
+      }
+
       if (_httpWriter != null) {
         try {
-          await _httpWriter.write(dirtyEntries,
-                                  progressReporter: progressReporter);
+          await _httpWriter.write(dirtyEntries);
         } on SocketException catch (socketException, stackTrace) {
           printTrace("DevFS sync failed. Lost connection to device: $socketException");
           throw new DevFSException('Lost connection to device.', socketException, stackTrace);
@@ -457,17 +461,6 @@ class DevFS {
           if (operation != null)
             _pendingOperations.add(operation);
         });
-        if (progressReporter != null) {
-          final int max = _pendingOperations.length;
-          int complete = 0;
-          _pendingOperations.forEach((Future<dynamic> f) => f.whenComplete(() {
-            // TODO(ianh): If one of the pending operations fail, we'll keep
-            // calling progressReporter long after update() has completed its
-            // future, assuming that doesn't crash the app.
-            complete += 1;
-            progressReporter(complete, max);
-          }));
-        }
         await Future.wait(_pendingOperations, eagerError: true);
         _pendingOperations.clear();
       }

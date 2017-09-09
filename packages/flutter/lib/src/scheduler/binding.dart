@@ -8,7 +8,7 @@ import 'dart:developer';
 import 'dart:ui' as ui show window;
 import 'dart:ui' show VoidCallback;
 
-import 'package:collection/collection.dart';
+import 'package:collection/collection.dart' show PriorityQueue, HeapPriorityQueue;
 import 'package:flutter/foundation.dart';
 
 import 'debug.dart';
@@ -207,7 +207,14 @@ abstract class SchedulerBinding extends BindingBase {
   void scheduleTask(VoidCallback task, Priority priority) {
     final bool isFirstTask = _taskQueue.isEmpty;
     _taskQueue.add(new _TaskEntry(task, priority.value));
-    if (isFirstTask)
+    if (isFirstTask && !locked)
+      _ensureEventLoopCallback();
+  }
+
+  @override
+  void unlocked() {
+    super.unlocked();
+    if (_taskQueue.isNotEmpty)
       _ensureEventLoopCallback();
   }
 
@@ -216,6 +223,7 @@ abstract class SchedulerBinding extends BindingBase {
 
   // Ensures that the scheduler is awakened by the event loop.
   void _ensureEventLoopCallback() {
+    assert(!locked);
     if (_hasRequestedAnEventLoopCallback)
       return;
     Timer.run(handleEventLoopCallback);
@@ -230,7 +238,7 @@ abstract class SchedulerBinding extends BindingBase {
 
   // Called when the system wakes up and at the end of each frame.
   void _runTasks() {
-    if (_taskQueue.isEmpty)
+    if (_taskQueue.isEmpty || locked)
       return;
     final _TaskEntry entry = _taskQueue.first;
     // TODO(floitsch): for now we only expose the priority. It might
@@ -285,7 +293,6 @@ abstract class SchedulerBinding extends BindingBase {
   /// [cancelFrameCallbackWithId].
   int scheduleFrameCallback(FrameCallback callback, { bool rescheduling: false }) {
     scheduleFrame();
-
     _nextFrameCallbackId += 1;
     _transientCallbacks[_nextFrameCallbackId] = new _FrameCallbackEntry(callback, rescheduling: rescheduling);
     return _nextFrameCallbackId;
@@ -550,7 +557,8 @@ abstract class SchedulerBinding extends BindingBase {
   }
   Duration _currentFrameTimeStamp;
 
-  int _debugFrameNumber = 0;
+  int _profileFrameNumber = 0;
+  final Stopwatch _profileFrameStopwatch = new Stopwatch();
   String _debugBanner;
 
   /// Called by the engine to prepare the framework to produce a new frame.
@@ -583,8 +591,13 @@ abstract class SchedulerBinding extends BindingBase {
     if (rawTimeStamp != null)
       _lastRawTimeStamp = rawTimeStamp;
 
+    profile(() {
+      _profileFrameNumber += 1;
+      _profileFrameStopwatch.reset();
+      _profileFrameStopwatch.start();
+    });
+
     assert(() {
-      _debugFrameNumber += 1;
       if (debugPrintBeginFrameBanner || debugPrintEndFrameBanner) {
         final StringBuffer frameTimeStampDescription = new StringBuffer();
         if (rawTimeStamp != null) {
@@ -592,7 +605,7 @@ abstract class SchedulerBinding extends BindingBase {
         } else {
           frameTimeStampDescription.write('(warm-up frame)');
         }
-        _debugBanner = '▄▄▄▄▄▄▄▄ Frame ${_debugFrameNumber.toString().padRight(7)}   ${frameTimeStampDescription.toString().padLeft(18)} ▄▄▄▄▄▄▄▄';
+        _debugBanner = '▄▄▄▄▄▄▄▄ Frame ${_profileFrameNumber.toString().padRight(7)}   ${frameTimeStampDescription.toString().padLeft(18)} ▄▄▄▄▄▄▄▄';
         if (debugPrintBeginFrameBanner)
           debugPrint(_debugBanner);
       }
@@ -644,18 +657,30 @@ abstract class SchedulerBinding extends BindingBase {
         _invokeFrameCallback(callback, _currentFrameTimeStamp);
     } finally {
       _schedulerPhase = SchedulerPhase.idle;
-      _currentFrameTimeStamp = null;
-      Timeline.finishSync();
+      Timeline.finishSync(); // end the Frame
+      profile(() {
+        _profileFrameStopwatch.stop();
+        _profileFramePostEvent();
+      });
       assert(() {
         if (debugPrintEndFrameBanner)
           debugPrint('▀' * _debugBanner.length);
         _debugBanner = null;
         return true;
       });
+      _currentFrameTimeStamp = null;
     }
 
     // All frame-related callbacks have been executed. Run lower-priority tasks.
     _runTasks();
+  }
+
+  void _profileFramePostEvent() {
+    postEvent('Flutter.Frame', <String, dynamic>{
+      'number': _profileFrameNumber,
+      'startTime': _currentFrameTimeStamp.inMicroseconds,
+      'elapsed': _profileFrameStopwatch.elapsedMicroseconds
+    });
   }
 
   static void _debugDescribeTimeStamp(Duration timeStamp, StringBuffer buffer) {

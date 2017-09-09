@@ -59,7 +59,7 @@ void main() {
         ' │ parentData: offset=Offset(0.0, 0.0) (can use size)\n'
         ' │ constraints: BoxConstraints(0.0<=w<=800.0, 0.0<=h<=600.0)\n'
         ' │ size: Size(63.0, 88.0)\n'
-        ' │ padding: EdgeInsets(5.0, 5.0, 5.0, 5.0)\n'
+        ' │ padding: EdgeInsets.all(5.0)\n'
         ' │\n'
         ' └─child: RenderConstrainedBox#00000 relayoutBoundary=up2\n'
         '   │ creator: ConstrainedBox ← Padding ← Container ← Align ← [root]\n'
@@ -74,7 +74,7 @@ void main() {
         '     │ parentData: <none> (can use size)\n'
         '     │ constraints: BoxConstraints(w=53.0, h=78.0)\n'
         '     │ size: Size(53.0, 78.0)\n'
-        '     │ decoration:\n'
+        '     │ decoration: BoxDecoration:\n'
         '     │   color: Color(0x7f0000ff)\n'
         '     │ configuration: ImageConfiguration(bundle:\n'
         '     │   PlatformAssetBundle#00000(), devicePixelRatio: 1.0, platform:\n'
@@ -86,7 +86,7 @@ void main() {
         '       │ parentData: <none> (can use size)\n'
         '       │ constraints: BoxConstraints(w=53.0, h=78.0)\n'
         '       │ size: Size(53.0, 78.0)\n'
-        '       │ decoration:\n'
+        '       │ decoration: BoxDecoration:\n'
         '       │   color: Color(0xff00ff00)\n'
         '       │ configuration: ImageConfiguration(bundle:\n'
         '       │   PlatformAssetBundle#00000(), devicePixelRatio: 1.0, platform:\n'
@@ -98,7 +98,7 @@ void main() {
         '         │ parentData: <none> (can use size)\n'
         '         │ constraints: BoxConstraints(w=53.0, h=78.0)\n'
         '         │ size: Size(53.0, 78.0)\n'
-        '         │ padding: EdgeInsets(7.0, 7.0, 7.0, 7.0)\n'
+        '         │ padding: EdgeInsets.all(7.0)\n'
         '         │\n'
         '         └─child: RenderPositionedBox#00000\n'
         '           │ creator: Align ← Padding ← DecoratedBox ← DecoratedBox ←\n'
@@ -106,7 +106,7 @@ void main() {
         '           │ parentData: offset=Offset(7.0, 7.0) (can use size)\n'
         '           │ constraints: BoxConstraints(w=39.0, h=64.0)\n'
         '           │ size: Size(39.0, 64.0)\n'
-        '           │ alignment: FractionalOffset(1.0, 1.0)\n'
+        '           │ alignment: FractionalOffset.bottomRight\n'
         '           │ widthFactor: expand\n'
         '           │ heightFactor: expand\n'
         '           │\n'
@@ -125,7 +125,7 @@ void main() {
         '                 parentData: <none> (can use size)\n'
         '                 constraints: BoxConstraints(w=25.0, h=33.0)\n'
         '                 size: Size(25.0, 33.0)\n'
-        '                 decoration:\n'
+        '                 decoration: BoxDecoration:\n'
         '                   color: Color(0xffffff00)\n'
         '                 configuration: ImageConfiguration(bundle:\n'
         '                   PlatformAssetBundle#00000(), devicePixelRatio: 1.0, platform:\n'
@@ -135,6 +135,11 @@ void main() {
   });
 
   testWidgets('Can be placed in an infinite box', (WidgetTester tester) async {
-    await tester.pumpWidget(new ListView(children: <Widget>[new Container()]));
+    await tester.pumpWidget(
+      new Directionality(
+        textDirection: TextDirection.ltr,
+        child: new ListView(children: <Widget>[new Container()]),
+      ),
+    );
   });
 }

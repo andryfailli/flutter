@@ -492,7 +492,7 @@ class Border {
   /// requirement that the border [isUniform].
   void paint(Canvas canvas, Rect rect, {
     BoxShape shape: BoxShape.rectangle,
-    BorderRadius borderRadius: null,
+    BorderRadius borderRadius,
   }) {
     if (isUniform) {
       if (borderRadius != null) {
@@ -1212,7 +1212,7 @@ Iterable<Rect> _generateImageTileRects(Rect outputRect, Rect fundamentalRect, Im
 ///  * `canvas`: The canvas onto which the image will be painted.
 ///  * `rect`: The region of the canvas into which the image will be painted.
 ///    The image might not fill the entire rectangle (e.g., depending on the
-///    `fit`).
+///    `fit`). If `rect` is empty, nothing is painted.
 ///  * `image`: The image to paint onto the canvas.
 ///  * `colorFilter`: If non-null, the color filter to apply when painting the
 ///    image.
@@ -1251,6 +1251,8 @@ void paintImage({
 }) {
   assert(canvas != null);
   assert(image != null);
+  if (rect.isEmpty)
+    return;
   Size outputSize = rect.size;
   Size inputSize = new Size(image.width.toDouble(), image.height.toDouble());
   Offset sliceBorder;
@@ -1601,38 +1603,20 @@ class BoxDecoration extends Decoration {
     );
   }
 
-  /// Stringifies the BoxDecoration. By default, the output will be on one line.
-  /// If the method is passed a non-empty string argument, then the output will
-  /// span multiple lines, each prefixed by that argument.
   @override
-  String toString([String prefix = '', String indentPrefix]) {
-    final List<String> result = <String>[];
-    if (color != null)
-      result.add('${prefix}color: $color');
-    if (image != null)
-      result.add('${prefix}image: $image');
-    if (border != null)
-      result.add('${prefix}border: $border');
-    if (borderRadius != null)
-      result.add('${prefix}borderRadius: $borderRadius');
-    if (boxShadow != null) {
-      if (indentPrefix != null && boxShadow.length > 1) {
-        result.add('${prefix}boxShadow:');
-        for (BoxShadow shadow in boxShadow)
-          result.add('$indentPrefix$shadow');
-      } else {
-        result.add('${prefix}boxShadow: ${boxShadow.map((BoxShadow shadow) => shadow.toString()).join(", ")}');
-      }
-    }
-    if (gradient != null)
-      result.add('${prefix}gradient: $gradient');
-    if (shape != BoxShape.rectangle)
-      result.add('${prefix}shape: $shape');
-    if (prefix == '')
-      return '$runtimeType(${result.join(', ')})';
-    if (result.isEmpty)
-      return '$prefix<no decorations specified>';
-    return result.join('\n');
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties
+      ..defaultDiagnosticsTreeStyle = DiagnosticsTreeStyle.whitespace
+      ..emptyBodyDescription = '<no decorations specified>';
+
+    properties.add(new DiagnosticsProperty<Color>('color', color, defaultValue: null));
+    properties.add(new DiagnosticsProperty<DecorationImage>('image', image, defaultValue: null));
+    properties.add(new DiagnosticsProperty<Border>('border', border, defaultValue: null));
+    properties.add(new DiagnosticsProperty<BorderRadius>('borderRadius', borderRadius, defaultValue: null));
+    properties.add(new IterableProperty<BoxShadow>('boxShadow', boxShadow, defaultValue: null, style: DiagnosticsTreeStyle.whitespace));
+    properties.add(new DiagnosticsProperty<Gradient>('gradient', gradient, defaultValue: null));
+    properties.add(new EnumProperty<BoxShape>('shape', shape, defaultValue: BoxShape.rectangle));
   }
 
   @override

@@ -7,6 +7,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui show Gradient, TextBox, lerpDouble;
 
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 
 import 'basic_types.dart';
 import 'box_fit.dart';
@@ -55,15 +56,16 @@ class FlutterLogoDecoration extends Decoration {
   /// The lighter of the two colors used to paint the logo.
   ///
   /// If possible, the default should be used. It corresponds to the 400 and 900
-  /// values of [Colors.blue] from the Material library.
+  /// values of [material.Colors.blue] from the Material library.
   ///
   /// If for some reason that color scheme is impractical, the same entries from
-  /// [Colors.amber], [Colors.red], or [Colors.indigo] colors can be used. These
-  /// are Flutter's secondary colors.
+  /// [material.Colors.amber], [material.Colors.red], or
+  /// [material.Colors.indigo] colors can be used. These are Flutter's secondary
+  /// colors.
   ///
   /// In extreme cases where none of those four color schemes will work,
-  /// [Colors.pink], [Colors.purple], or [Colors.cyan] can be used.
-  /// These are Flutter's tertiary colors.
+  /// [material.Colors.pink], [material.Colors.purple], or
+  /// [material.Colors.cyan] can be used. These are Flutter's tertiary colors.
   final Color lightColor;
 
   /// The darker of the two colors used to paint the logo.
@@ -210,9 +212,12 @@ class FlutterLogoDecoration extends Decoration {
   }
 
   @override
-  String toString([String prefix = '', String prefixIndent ]) {
-    final String extra = _inTransition ? ', transition $_position:$_opacity' : '';
-    return '$prefix$runtimeType($lightColor/$darkColor on $textColor, $style$extra)';
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new DiagnosticsNode.message('$lightColor/$darkColor on $textColor'));
+    properties.add(new EnumProperty<FlutterLogoStyle>('style', style));
+    if (_inTransition)
+      properties.add(new DiagnosticsNode.message('transition $_position:$_opacity'));
   }
 }
 
@@ -242,9 +247,10 @@ class _FlutterLogoPainter extends BoxPainter {
           fontFamily: 'Roboto',
           fontSize: 100.0 * 350.0 / 247.0, // 247 is the height of the F when the fontSize is 350, assuming device pixel ratio 1.0
           fontWeight: FontWeight.w300,
-          textBaseline: TextBaseline.alphabetic
-        )
-      )
+          textBaseline: TextBaseline.alphabetic,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
     );
     _textPainter.layout();
     final ui.TextBox textSize = _textPainter.getBoxesForSelection(const TextSelection(baseOffset: 0, extentOffset: kLabel.length)).single;
@@ -370,6 +376,8 @@ class _FlutterLogoPainter extends BoxPainter {
   void paint(Canvas canvas, Offset offset, ImageConfiguration configuration) {
     offset += _config.margin.topLeft;
     final Size canvasSize = _config.margin.deflateSize(configuration.size);
+    if (canvasSize.isEmpty)
+      return;
     Size logoSize;
     if (_config._position > 0.0) {
       // horizontal style
@@ -454,6 +462,7 @@ class _FlutterLogoPainter extends BoxPainter {
         final double fontSize = 0.35 * logoTargetSquare.height * (1 - (10.4 * 2.0) / 202.0);
         final double scale = fontSize / 100.0;
         if (_config._position > -1.0) {
+          // This limits what the drawRect call below is going to blend with.
           canvas.saveLayer(_textBoundingRect, new Paint());
         } else {
           canvas.save();

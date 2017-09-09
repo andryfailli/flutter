@@ -28,6 +28,10 @@ import 'semantics.dart';
 const String _extensionMethodName = 'driver';
 const String _extensionMethod = 'ext.flutter.$_extensionMethodName';
 
+/// Signature for the handler passed to [enableFlutterDriverExtension].
+///
+/// Messages are described in string form and should return a [Future] which
+/// eventually completes to a string response.
 typedef Future<String> DataHandler(String message);
 
 class _DriverBinding extends BindingBase with SchedulerBinding, GestureBinding, ServicesBinding, RendererBinding, WidgetsBinding {
@@ -72,8 +76,14 @@ typedef Command CommandDeserializerCallback(Map<String, String> params);
 /// found, if any, or null otherwise.
 typedef Finder FinderConstructor(SerializableFinder finder);
 
+/// The class that manages communication between a Flutter Driver test and the
+/// application being remote-controlled, on the application side.
+///
+/// This is not normally used directly. It is instantiated automatically when
+/// calling [enableFlutterDriverExtension].
 @visibleForTesting
 class FlutterDriverExtension {
+  /// Creates an object to manage a Flutter Driver connection.
   FlutterDriverExtension(this._requestDataHandler) {
     _commandHandlers.addAll(<String, CommandHandlerCallback>{
       'get_health': _getHealth,
@@ -86,6 +96,7 @@ class FlutterDriverExtension {
       'set_semantics': _setSemantics,
       'tap': _tap,
       'waitFor': _waitFor,
+      'waitForAbsent': _waitForAbsent,
       'waitUntilNoTransientCallbacks': _waitUntilNoTransientCallbacks,
     });
 
@@ -100,6 +111,7 @@ class FlutterDriverExtension {
       'set_semantics': (Map<String, String> params) => new SetSemantics.deserialize(params),
       'tap': (Map<String, String> params) => new Tap.deserialize(params),
       'waitFor': (Map<String, String> params) => new WaitFor.deserialize(params),
+      'waitForAbsent': (Map<String, String> params) => new WaitForAbsent.deserialize(params),
       'waitUntilNoTransientCallbacks': (Map<String, String> params) => new WaitUntilNoTransientCallbacks.deserialize(params),
     });
 
@@ -107,6 +119,7 @@ class FlutterDriverExtension {
       'ByText': _createByTextFinder,
       'ByTooltipMessage': _createByTooltipMessageFinder,
       'ByValueKey': _createByValueKeyFinder,
+      'ByType': _createByTypeFinder,
     });
   }
 
@@ -187,7 +200,20 @@ class FlutterDriverExtension {
     if (_frameSync)
       await _waitUntilFrame(() => SchedulerBinding.instance.transientCallbackCount == 0);
 
-    await _waitUntilFrame(() => finder.precache());
+    await _waitUntilFrame(() => finder.evaluate().isNotEmpty);
+
+    if (_frameSync)
+      await _waitUntilFrame(() => SchedulerBinding.instance.transientCallbackCount == 0);
+
+    return finder;
+  }
+
+  /// Runs `finder` repeatedly until it finds zero [Element]s.
+  Future<Finder> _waitForAbsentElement(Finder finder) async {
+    if (_frameSync)
+      await _waitUntilFrame(() => SchedulerBinding.instance.transientCallbackCount == 0);
+
+    await _waitUntilFrame(() => finder.evaluate().isEmpty);
 
     if (_frameSync)
       await _waitUntilFrame(() => SchedulerBinding.instance.transientCallbackCount == 0);
@@ -219,6 +245,12 @@ class FlutterDriverExtension {
     }
   }
 
+  Finder _createByTypeFinder(ByType arguments) {
+    return find.byElementPredicate((Element element) {
+      return element.widget.runtimeType.toString() == arguments.type;
+    }, description: 'widget with runtimeType "${arguments.type}"');
+  }
+
   Finder _createFinder(SerializableFinder finder) {
     final FinderConstructor constructor = _finders[finder.finderType];
 
@@ -236,10 +268,14 @@ class FlutterDriverExtension {
 
   Future<WaitForResult> _waitFor(Command command) async {
     final WaitFor waitForCommand = command;
-    if ((await _waitForElement(_createFinder(waitForCommand.finder))).evaluate().isNotEmpty)
-      return new WaitForResult();
-    else
-      return null;
+    await _waitForElement(_createFinder(waitForCommand.finder));
+    return new WaitForResult();
+  }
+
+  Future<WaitForAbsentResult> _waitForAbsent(Command command) async {
+    final WaitForAbsent waitForAbsentCommand = command;
+    await _waitForAbsentElement(_createFinder(waitForAbsentCommand.finder));
+    return new WaitForAbsentResult();
   }
 
   Future<Null> _waitUntilNoTransientCallbacks(Command command) async {
@@ -288,7 +324,7 @@ class FlutterDriverExtension {
 
   Future<RequestDataResult> _requestData(Command command) async {
     final RequestData requestDataCommand = command;
-    return new RequestDataResult(_requestDataHandler == null ? '' : await _requestDataHandler(requestDataCommand.message));
+    return new RequestDataResult(_requestDataHandler == null ? 'No requestData Extension registered' : await _requestDataHandler(requestDataCommand.message));
   }
 
   Future<SetFrameSyncResult> _setFrameSync(Command command) async {

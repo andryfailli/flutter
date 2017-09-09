@@ -19,7 +19,7 @@ const TextStyle _kLabelStyle = const TextStyle(
   fontSize: 13.0,
   fontWeight: FontWeight.w400,
   color: Colors.black87,
-  textBaseline: TextBaseline.alphabetic
+  textBaseline: TextBaseline.alphabetic,
 );
 
 /// A material design chip.
@@ -57,6 +57,10 @@ class Chip extends StatelessWidget {
     this.avatar,
     @required this.label,
     this.onDeleted,
+    this.labelStyle,
+    this.deleteButtonTooltipMessage,
+    this.backgroundColor,
+    this.deleteIconColor,
   }) : super(key: key);
 
   /// A widget to display prior to the chip's label.
@@ -74,47 +78,73 @@ class Chip extends StatelessWidget {
   /// The delete button is included in the chip only if this callback is non-null.
   final VoidCallback onDeleted;
 
+  /// The style to be applied to the chip's label.
+  ///
+  /// This only has effect on widgets that respect the [DefaultTextStyle],
+  /// such as [Text].
+  final TextStyle labelStyle;
+
+  /// Color to be used for the chip's background, the default being grey.
+  ///
+  /// This color is used as the background of the container that will hold the
+  /// widget's label.
+  final Color backgroundColor;
+
+  /// Color for delete icon, the default being black.
+  ///
+  /// This has no effect when [onDelete] is null since no delete icon will be
+  /// shown.
+  final Color deleteIconColor;
+
+  /// Message to be used for the chip delete button's tooltip.
+  ///
+  /// This has no effect when [onDelete] is null since no delete icon will be
+  /// shown.
+  final String deleteButtonTooltipMessage;
+
   @override
   Widget build(BuildContext context) {
     assert(debugCheckHasMaterial(context));
     final bool deletable = onDeleted != null;
-    double leftPadding = 12.0;
-    double rightPadding = 12.0;
+    double startPadding = 12.0;
+    double endPadding = 12.0;
 
     final List<Widget> children = <Widget>[];
 
     if (avatar != null) {
-      leftPadding = 0.0;
+      startPadding = 0.0;
       children.add(new ExcludeSemantics(
         child: new Container(
-          margin: const EdgeInsets.only(right: 8.0),
+          margin: const EdgeInsetsDirectional.only(end: 8.0),
           width: _kAvatarDiamater,
           height: _kAvatarDiamater,
-          child: avatar
-        )
+          child: avatar,
+        ),
       ));
     }
 
-    children.add(new DefaultTextStyle(
-      style: _kLabelStyle,
-      child: label
+    children.add(new Flexible(
+      child: new DefaultTextStyle(
+        style: labelStyle ?? _kLabelStyle,
+        child: label,
+      ),
     ));
 
     if (deletable) {
-      rightPadding = 0.0;
+      endPadding = 0.0;
       children.add(new GestureDetector(
         onTap: Feedback.wrapForTap(onDeleted, context),
         child: new Tooltip(
-          message: 'Delete "$label"',
+          message: deleteButtonTooltipMessage ?? 'Delete "$label"',
           child: new Container(
             padding: const EdgeInsets.symmetric(horizontal: 4.0),
-            child: const Icon(
+            child: new Icon(
               Icons.cancel,
               size: 18.0,
-              color: Colors.black54
-            )
-          )
-        )
+              color: deleteIconColor ?? Colors.black54,
+            ),
+          ),
+        ),
       ));
     }
 
@@ -122,16 +152,16 @@ class Chip extends StatelessWidget {
       container: true,
       child: new Container(
         height: _kChipHeight,
-        padding: new EdgeInsets.only(left: leftPadding, right: rightPadding),
+        padding: new EdgeInsetsDirectional.only(start: startPadding, end: endPadding),
         decoration: new BoxDecoration(
-          color: Colors.grey.shade300,
-          borderRadius: new BorderRadius.circular(16.0)
+          color: backgroundColor ?? Colors.grey.shade300,
+          borderRadius: new BorderRadius.circular(16.0),
         ),
         child: new Row(
           children: children,
-          mainAxisSize: MainAxisSize.min
-        )
-      )
+          mainAxisSize: MainAxisSize.min,
+        ),
+      ),
     );
   }
 }

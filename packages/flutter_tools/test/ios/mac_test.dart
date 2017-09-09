@@ -21,10 +21,39 @@ class MockProcessManager extends Mock implements ProcessManager {}
 class MockFile extends Mock implements File {}
 
 void main() {
-  final FakePlatform osx = new FakePlatform.fromPlatform(const LocalPlatform());
-  osx.operatingSystem = 'macos';
-
   group('IMobileDevice', () {
+    final FakePlatform osx = new FakePlatform.fromPlatform(const LocalPlatform())
+      ..operatingSystem = 'macos';
+    MockProcessManager mockProcessManager;
+
+    setUp(() {
+      mockProcessManager = new MockProcessManager();
+    });
+
+    testUsingContext('getAvailableDeviceIDs throws ToolExit when libimobiledevice is not installed', () async {
+      when(mockProcessManager.run(<String>['idevice_id', '-l']))
+          .thenThrow(const ProcessException('idevice_id', const <String>['-l']));
+      expect(() async => await iMobileDevice.getAvailableDeviceIDs(), throwsToolExit());
+    }, overrides: <Type, Generator>{
+      ProcessManager: () => mockProcessManager,
+    });
+
+    testUsingContext('getAvailableDeviceIDs throws ToolExit when idevice_id returns non-zero', () async {
+      when(mockProcessManager.run(<String>['idevice_id', '-l']))
+          .thenReturn(new ProcessResult(1, 1, '', 'Sad today'));
+      expect(() async => await iMobileDevice.getAvailableDeviceIDs(), throwsToolExit());
+    }, overrides: <Type, Generator>{
+      ProcessManager: () => mockProcessManager,
+    });
+
+    testUsingContext('getAvailableDeviceIDs returns idevice_id output when installed', () async {
+      when(mockProcessManager.run(<String>['idevice_id', '-l']))
+          .thenReturn(new ProcessResult(1, 0, 'foo', ''));
+      expect(await iMobileDevice.getAvailableDeviceIDs(), 'foo');
+    }, overrides: <Type, Generator>{
+      ProcessManager: () => mockProcessManager,
+    });
+
     group('screenshot', () {
       final String outputPath = fs.path.join('some', 'test', 'path', 'image.png');
       MockProcessManager mockProcessManager;
@@ -208,30 +237,6 @@ void main() {
       when(mockProcessManager.runSync(<String>['/usr/bin/xcrun', 'clang']))
           .thenReturn(new ProcessResult(1, 1, '', 'clang: error: no input files'));
       expect(xcode.eulaSigned, isTrue);
-    }, overrides: <Type, Generator>{
-      ProcessManager: () => mockProcessManager,
-    });
-
-    testUsingContext('getAvailableDevices throws ToolExit when instruments is not installed', () async {
-      when(mockProcessManager.run(<String>['/usr/bin/instruments', '-s', 'devices']))
-          .thenThrow(const ProcessException('/usr/bin/instruments', const <String>['-s', 'devices']));
-      expect(() async => await xcode.getAvailableDevices(), throwsToolExit());
-    }, overrides: <Type, Generator>{
-      ProcessManager: () => mockProcessManager,
-    });
-
-    testUsingContext('getAvailableDevices throws ToolExit when instruments returns non-zero', () async {
-      when(mockProcessManager.run(<String>['/usr/bin/instruments', '-s', 'devices']))
-          .thenReturn(new ProcessResult(1, 1, '', 'Sad today'));
-      expect(() async => await xcode.getAvailableDevices(), throwsToolExit());
-    }, overrides: <Type, Generator>{
-      ProcessManager: () => mockProcessManager,
-    });
-
-    testUsingContext('getAvailableDevices returns instruments output when installed', () async {
-      when(mockProcessManager.run(<String>['/usr/bin/instruments', '-s', 'devices']))
-          .thenReturn(new ProcessResult(1, 0, 'Known Devices:\niPhone 6s (10.3.3) [foo]', ''));
-      expect(await xcode.getAvailableDevices(), 'Known Devices:\niPhone 6s (10.3.3) [foo]');
     }, overrides: <Type, Generator>{
       ProcessManager: () => mockProcessManager,
     });

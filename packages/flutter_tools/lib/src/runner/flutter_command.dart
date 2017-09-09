@@ -79,7 +79,10 @@ abstract class FlutterCommand extends Command<Null> {
     argParser.addOption('target',
       abbr: 't',
       defaultsTo: flx.defaultMainPath,
-      help: 'Target app path / main entry-point file.');
+      help: 'The main entry-point file of the application, as run on the device.\n'
+            'If the --target option is omitted, but a file name is provided on\n'
+            'the command line, then that is used instead.',
+      valueHelp: 'path');
     _usesTargetOption = true;
   }
 
@@ -128,6 +131,25 @@ abstract class FlutterCommand extends Command<Null> {
     if (argResults['release'])
       return BuildMode.release;
     return _defaultBuildMode;
+  }
+
+  void usesFlavorOption() {
+    argParser.addOption(
+      'flavor',
+      help: 'Build a custom app flavor as defined by platform-specific build setup.\n'
+        'Supports the use of product flavors in Android Gradle scripts.\n'
+        'Supports the use of custom Xcode schemes.'
+    );
+  }
+
+  BuildInfo getBuildInfo() {
+    return new BuildInfo(getBuildMode(),
+      argParser.options.containsKey('flavor')
+        ? argResults['flavor']
+        : null,
+      previewDart2: argParser.options.containsKey('preview-dart-2')
+        ? argResults['preview-dart-2']
+        : false);
   }
 
   void setupApplicationPackages() {

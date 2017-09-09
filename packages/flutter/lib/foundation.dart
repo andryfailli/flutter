@@ -22,6 +22,9 @@ export 'package:meta/meta.dart' show
 // bool _first;
 // bool _lights;
 // bool _visible;
+// bool inherit;
+// int columns;
+// int rows;
 // class Cat { }
 // double _volume;
 // dynamic _calculation;
@@ -33,11 +36,14 @@ export 'src/foundation/assertions.dart';
 export 'src/foundation/basic_types.dart';
 export 'src/foundation/binding.dart';
 export 'src/foundation/change_notifier.dart';
+export 'src/foundation/collections.dart';
 export 'src/foundation/debug.dart';
+export 'src/foundation/diagnostics.dart';
 export 'src/foundation/licenses.dart';
 export 'src/foundation/observer_list.dart';
 export 'src/foundation/platform.dart';
 export 'src/foundation/print.dart';
+export 'src/foundation/profile.dart';
 export 'src/foundation/serialization.dart';
 export 'src/foundation/synchronous_future.dart';
-export 'src/foundation/tree_diagnostics_mixin.dart';
+export 'src/foundation/unicode.dart';
