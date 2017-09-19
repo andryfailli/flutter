@@ -75,19 +75,15 @@ String generateLocalizationsMap() {
 /// This variable is used by [MaterialLocalizations].
 const Map<String, Map<String, String>> localizations = const <String, Map<String, String>> {''');
 
-  final String lastLocale = localeToResources.keys.last;
-  for (String locale in localeToResources.keys) {
+  for (String locale in localeToResources.keys.toList()..sort()) {
     output.writeln('  "$locale": const <String, String>{');
 
     final Map<String, String> resources = localeToResources[locale];
-    final String lastName = resources.keys.last;
     for (String name in resources.keys) {
-      final String comma = name == lastName ? "" : ",";
       final String value = generateString(resources[name]);
-      output.writeln('    "$name": $value$comma');
+      output.writeln('    "$name": $value,');
     }
-    final String comma = locale == lastLocale ? "" : ",";
-    output.writeln('  }$comma');
+    output.writeln('  },');
   }
 
   output.writeln('};');
@@ -126,7 +122,7 @@ void main(List<String> args) {
     }
   }
 
-  final String regenerate = 'dart gen_localizations ${directory.path} ${args[1]}';
+  final String regenerate = 'dart dev/tools/gen_localizations.dart ${directory.path} ${args[1]}';
   print(outputHeader.replaceFirst('@(regenerate)', regenerate));
   print(generateLocalizationsMap());
 }

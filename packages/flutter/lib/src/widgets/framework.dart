@@ -15,6 +15,7 @@ export 'dart:ui' show hashValues, hashList;
 
 export 'package:flutter/foundation.dart' show FlutterError, debugPrint, debugPrintStack;
 export 'package:flutter/foundation.dart' show VoidCallback, ValueChanged, ValueGetter, ValueSetter;
+export 'package:flutter/foundation.dart' show DiagnosticLevel;
 export 'package:flutter/rendering.dart' show RenderObject, RenderBox, debugDumpRenderTree, debugDumpLayerTree;
 
 // Examples can assume:
@@ -2223,7 +2224,7 @@ class BuildOwner {
       _debugBuilding = true;
       return true;
     });
-    Timeline.startSync('Build');
+    Timeline.startSync('Build', arguments: timelineWhitelistArguments);
     try {
       _scheduledFlushDirtyElements = true;
       if (callback != null) {
@@ -2340,7 +2341,7 @@ class BuildOwner {
   /// After the current call stack unwinds, a microtask that notifies listeners
   /// about changes to global keys will run.
   void finalizeTree() {
-    Timeline.startSync('Finalize tree');
+    Timeline.startSync('Finalize tree', arguments: timelineWhitelistArguments);
     try {
       lockState(() {
         _inactiveElements._unmountAll(); // this unregisters the GlobalKeys
@@ -3131,7 +3132,7 @@ abstract class Element extends DiagnosticableTree implements BuildContext {
           'The size getter was called for the following element:\n'
           '  $this\n'
           'The associated render sliver was:\n'
-          '  ${renderObject.toStringShallow("\n  ")}'
+          '  ${renderObject.toStringShallow(joiner: "\n  ")}'
         );
       }
       if (renderObject is! RenderBox) {
@@ -3144,7 +3145,7 @@ abstract class Element extends DiagnosticableTree implements BuildContext {
           'The size getter was called for the following element:\n'
           '  $this\n'
           'The associated render object was:\n'
-          '  ${renderObject.toStringShallow("\n  ")}'
+          '  ${renderObject.toStringShallow(joiner: "\n  ")}'
         );
       }
       final RenderBox box = renderObject;
@@ -3159,7 +3160,7 @@ abstract class Element extends DiagnosticableTree implements BuildContext {
           'The size getter was called for the following element:\n'
           '  $this\n'
           'The render object from which the size was to be obtained was:\n'
-          '  ${box.toStringShallow("\n  ")}'
+          '  ${box.toStringShallow(joiner: "\n  ")}'
         );
       }
       if (box.debugNeedsLayout) {
@@ -3173,7 +3174,7 @@ abstract class Element extends DiagnosticableTree implements BuildContext {
           'The size getter was called for the following element:\n'
           '  $this\n'
           'The render object from which the size was to be obtained was:\n'
-          '  ${box.toStringShallow("\n  ")}\n'
+          '  ${box.toStringShallow(joiner: "\n  ")}\n'
           'Consider using debugPrintMarkNeedsLayoutStacks to determine why the render '
           'object in question is dirty, if you did not expect this.'
         );
@@ -3333,7 +3334,7 @@ abstract class Element extends DiagnosticableTree implements BuildContext {
     description.add(new ObjectFlagProperty<int>('depth', depth, ifNull: 'no depth'));
     description.add(new ObjectFlagProperty<Widget>('widget', widget, ifNull: 'no widget'));
     if (widget != null) {
-      description.add(new DiagnosticsProperty<Key>('key', widget?.key, showName: false, defaultValue: null, hidden: true));
+      description.add(new DiagnosticsProperty<Key>('key', widget?.key, showName: false, defaultValue: null, level: DiagnosticLevel.hidden));
       widget.debugFillProperties(description);
     }
     description.add(new FlagProperty('dirty', value: dirty, ifTrue: 'dirty'));
