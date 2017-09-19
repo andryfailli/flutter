@@ -138,6 +138,12 @@ abstract class PaintPattern {
   ///
   /// Any calls made between the last matched call (if any) and the
   /// [Canvas.drawRect] call are ignored.
+  ///
+  /// The [Paint]-related arguments (`color`, `strokeWidth`, `hasMaskFilter`,
+  /// `style`) are compared against the state of the [Paint] object after the
+  /// painting has completed, not at the time of the call. If the same [Paint]
+  /// object is reused multiple times, then this may not match the actual
+  /// arguments as they were seen by the method.
   void rect({ Rect rect, Color color, double strokeWidth, bool hasMaskFilter, PaintingStyle style });
 
   /// Indicates that a rounded rectangle clip is expected next.
@@ -162,6 +168,12 @@ abstract class PaintPattern {
   ///
   /// Any calls made between the last matched call (if any) and the
   /// [Canvas.drawRRect] call are ignored.
+  ///
+  /// The [Paint]-related arguments (`color`, `strokeWidth`, `hasMaskFilter`,
+  /// `style`) are compared against the state of the [Paint] object after the
+  /// painting has completed, not at the time of the call. If the same [Paint]
+  /// object is reused multiple times, then this may not match the actual
+  /// arguments as they were seen by the method.
   void rrect({ RRect rrect, Color color, double strokeWidth, bool hasMaskFilter, PaintingStyle style });
 
   /// Indicates that a circle is expected next.
@@ -174,6 +186,12 @@ abstract class PaintPattern {
   ///
   /// Any calls made between the last matched call (if any) and the
   /// [Canvas.drawCircle] call are ignored.
+  ///
+  /// The [Paint]-related arguments (`color`, `strokeWidth`, `hasMaskFilter`,
+  /// `style`) are compared against the state of the [Paint] object after the
+  /// painting has completed, not at the time of the call. If the same [Paint]
+  /// object is reused multiple times, then this may not match the actual
+  /// arguments as they were seen by the method.
   void circle({ double x, double y, double radius, Color color, double strokeWidth, bool hasMaskFilter, PaintingStyle style });
 
   /// Indicates that a path is expected next.
@@ -189,6 +207,12 @@ abstract class PaintPattern {
   ///
   /// Any calls made between the last matched call (if any) and the
   /// [Canvas.drawPath] call are ignored.
+  ///
+  /// The [Paint]-related arguments (`color`, `strokeWidth`, `hasMaskFilter`,
+  /// `style`) are compared against the state of the [Paint] object after the
+  /// painting has completed, not at the time of the call. If the same [Paint]
+  /// object is reused multiple times, then this may not match the actual
+  /// arguments as they were seen by the method.
   void path({ Color color, double strokeWidth, bool hasMaskFilter, PaintingStyle style });
 
   /// Indicates that a line is expected next.
@@ -201,6 +225,12 @@ abstract class PaintPattern {
   ///
   /// Any calls made between the last matched call (if any) and the
   /// [Canvas.drawLine] call are ignored.
+  ///
+  /// The [Paint]-related arguments (`color`, `strokeWidth`, `hasMaskFilter`,
+  /// `style`) are compared against the state of the [Paint] object after the
+  /// painting has completed, not at the time of the call. If the same [Paint]
+  /// object is reused multiple times, then this may not match the actual
+  /// arguments as they were seen by the method.
   void line({ Color color, double strokeWidth, bool hasMaskFilter, PaintingStyle style });
 
   /// Indicates that an arc is expected next.
@@ -213,6 +243,12 @@ abstract class PaintPattern {
   ///
   /// Any calls made between the last matched call (if any) and the
   /// [Canvas.drawArc] call are ignored.
+  ///
+  /// The [Paint]-related arguments (`color`, `strokeWidth`, `hasMaskFilter`,
+  /// `style`) are compared against the state of the [Paint] object after the
+  /// painting has completed, not at the time of the call. If the same [Paint]
+  /// object is reused multiple times, then this may not match the actual
+  /// arguments as they were seen by the method.
   void arc({ Color color, double strokeWidth, bool hasMaskFilter, PaintingStyle style });
 
   /// Indicates that a paragraph is expected next.
@@ -260,34 +296,46 @@ abstract class _TestRecordingCanvasMatcher extends Matcher {
   bool matches(Object object, Map<dynamic, dynamic> matchState) {
     final TestRecordingCanvas canvas = new TestRecordingCanvas();
     final TestRecordingPaintingContext context = new TestRecordingPaintingContext(canvas);
-    if (object is _ContextPainterFunction) {
-      final _ContextPainterFunction function = object;
-      function(context, Offset.zero);
-    } else if (object is _CanvasPainterFunction) {
-      final _CanvasPainterFunction function = object;
-      function(canvas);
-    } else {
-      if (object is Finder) {
-        TestAsyncUtils.guardSync();
-        final Finder finder = object;
-        object = finder.evaluate().single.renderObject;
-      }
-      if (object is RenderObject) {
-        final RenderObject renderObject = object;
-        renderObject.paint(context, Offset.zero);
-      } else {
-        matchState[this] = 'was not one of the supported objects for the "paints" matcher.';
-        return false;
-      }
-    }
     final StringBuffer description = new StringBuffer();
-    final bool result = _evaluatePredicates(canvas.invocations, description);
+    String prefixMessage = 'unexpectedly failed.';
+    bool result = false;
+    try {
+      if (object is _ContextPainterFunction) {
+        final _ContextPainterFunction function = object;
+        function(context, Offset.zero);
+      } else if (object is _CanvasPainterFunction) {
+        final _CanvasPainterFunction function = object;
+        function(canvas);
+      } else {
+        if (object is Finder) {
+          TestAsyncUtils.guardSync();
+          final Finder finder = object;
+          object = finder.evaluate().single.renderObject;
+        }
+        if (object is RenderObject) {
+          final RenderObject renderObject = object;
+          renderObject.paint(context, Offset.zero);
+        } else {
+          matchState[this] = 'was not one of the supported objects for the "paints" matcher.';
+          return false;
+        }
+      }
+      result = _evaluatePredicates(canvas.invocations, description);
+      if (!result)
+        prefixMessage = 'did not match the pattern.';
+    } catch (error, stack) {
+      prefixMessage = 'threw the following exception:';
+      description.writeln(error.toString());
+      description.write(stack.toString());
+      result = false;
+    }
     if (!result) {
-      if (canvas.invocations.isNotEmpty)
+      if (canvas.invocations.isNotEmpty) {
         description.write('The complete display list was:');
         for (RecordedInvocation call in canvas.invocations)
           description.write('\n  * $call');
-      matchState[this] = 'did not match the pattern.\n$description';
+      }
+      matchState[this] = '$prefixMessage\n$description';
     }
     return result;
   }

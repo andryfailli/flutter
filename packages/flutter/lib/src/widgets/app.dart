@@ -34,6 +34,16 @@ export 'dart:ui' show Locale;
 /// parameter is just the value of [WidgetApp.supportedLocales].
 typedef Locale LocaleResolutionCallback(Locale locale, Iterable<Locale> supportedLocales);
 
+/// The signature of [WidgetsApp.onGenerateTitle].
+///
+/// Used to generate a value for the app's [Title.title], which the device uses
+/// to identify the app for the user. The `context` includes the [WidgetApp]'s
+/// [Localizations] widget so that this method can be used to produce a
+/// localized title.
+///
+/// This function must not return null.
+typedef String GenerateAppTitle(BuildContext context);
+
 // Delegate that fetches the default (English) strings.
 class _WidgetsLocalizationsDelegate extends LocalizationsDelegate<WidgetsLocalizations> {
   const _WidgetsLocalizationsDelegate();
@@ -70,7 +80,8 @@ class WidgetsApp extends StatefulWidget {
     Key key,
     @required this.onGenerateRoute,
     this.onUnknownRoute,
-    this.title,
+    this.title: '',
+    this.onGenerateTitle,
     this.textStyle,
     @required this.color,
     this.navigatorObservers: const <NavigatorObserver>[],
@@ -86,7 +97,8 @@ class WidgetsApp extends StatefulWidget {
     this.debugShowWidgetInspector: false,
     this.debugShowCheckedModeBanner: true,
     this.inspectorSelectButtonBuilder,
-  }) : assert(onGenerateRoute != null),
+  }) : assert(title != null),
+       assert(onGenerateRoute != null),
        assert(color != null),
        assert(navigatorObservers != null),
        assert(supportedLocales != null && supportedLocales.isNotEmpty),
@@ -98,8 +110,25 @@ class WidgetsApp extends StatefulWidget {
        assert(debugShowWidgetInspector != null),
        super(key: key);
 
-  /// A one-line description of this app for use in the window manager.
+  /// A one-line description used by the device to identify the app for the user.
+  ///
+  /// On Android the titles appear above the task manager's app snapshots which are
+  /// displayed when the user presses the "recent apps" button. Similarly, on
+  /// iOS the titles appear in the App Switcher when the user double presses the
+  /// home button.
+  ///
+  /// To provide a localized title instead, use [onGenerateTitle].
   final String title;
+
+  /// If non-null this callback function is called to produce the app's
+  /// title string, otherwise [title] is used.
+  ///
+  /// The [onGenerateTitle] `context` parameter includes the [WidgetApp]'s
+  /// [Localizations] widget so that this callback can be used to produce a
+  /// localized title.
+  ///
+  /// This callback function must not return null.
+  final GenerateAppTitle onGenerateTitle;
 
   /// The default text style for [Text] in the application.
   final TextStyle textStyle;
@@ -298,6 +327,21 @@ class _WidgetsAppState extends State<WidgetsApp> implements WidgetsBindingObserv
   Locale _locale;
 
   Locale _resolveLocale(Locale newLocale, Iterable<Locale> supportedLocales) {
+    // Android devices (Java really) report 3 deprecated language codes, see
+    // http://bugs.java.com/bugdatabase/view_bug.do?bug_id=4140555
+    // and https://developer.android.com/reference/java/util/Locale.html
+    switch(newLocale.languageCode) {
+      case 'iw':
+        newLocale = new Locale('he', newLocale.countryCode); // Hebrew
+        break;
+      case 'ji':
+        newLocale = new Locale('yi', newLocale.countryCode); // Yiddish
+        break;
+      case 'in':
+        newLocale = new Locale('id', newLocale.countryCode); // Indonesian
+        break;
+    }
+
     if (widget.localeResolutionCallback != null) {
       final Locale locale = widget.localeResolutionCallback(newLocale, widget.supportedLocales);
       if (locale != null)
@@ -367,11 +411,14 @@ class _WidgetsAppState extends State<WidgetsApp> implements WidgetsBindingObserv
   }
 
   // Combine the Localizations for Widgets with the ones contributed
-  // by the localizationsDelegates parameter, if any.
+  // by the localizationsDelegates parameter, if any. Only the first delegate
+  // of a particular LocalizationsDelegate.type is loaded so the
+  // localizationsDelegate parameter can be used to override
+  // _WidgetsLocalizationsDelegate.
   Iterable<LocalizationsDelegate<dynamic>> get _localizationsDelegates sync* {
-    yield const _WidgetsLocalizationsDelegate(); // TODO(ianh): make this configurable
     if (widget.localizationsDelegates != null)
       yield* widget.localizationsDelegates;
+    yield const _WidgetsLocalizationsDelegate();
   }
 
   @override
@@ -446,10 +493,22 @@ class _WidgetsAppState extends State<WidgetsApp> implements WidgetsBindingObserv
       child: new Localizations(
         locale: widget.locale ?? _locale,
         delegates: _localizationsDelegates.toList(),
-        child: new Title(
-          title: widget.title,
-          color: widget.color,
-          child: result,
+        // This Builder exists to provide a context below the Localizations widget.
+        // The onGenerateCallback() can refer to Localizations via its context
+        // parameter.
+        child: new Builder(
+          builder: (BuildContext context) {
+            String title = widget.title;
+            if (widget.onGenerateTitle != null) {
+              title = widget.onGenerateTitle(context);
+              assert(title != null, 'onGenerateTitle must return a non-null String');
+            }
+            return new Title(
+              title: title,
+              color: widget.color,
+              child: result,
+            );
+          },
         ),
       ),
     );
